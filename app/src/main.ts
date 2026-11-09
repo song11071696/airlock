@@ -1,6 +1,6 @@
 import { cloudConfigured, cloudReachable, CLOUD_MODEL, CloudRefusedError, deviceState, getCloudProblem, resetCloudProblem, prepareDeviceModel, transcribeImage, type Analysis, type DeviceState } from "./ai";
 import { build, discover, errMsg, followUp, runAnalysis, type Prepared, type StepLog } from "./pipeline";
-import { TOKEN_RE, type Entity } from "./pii";
+import { maskCard, TOKEN_RE, type Entity } from "./pii";
 import { SAMPLES } from "./samples";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -240,7 +240,8 @@ $("btn-analyse").addEventListener("click", async () => {
 function highlightFilled(s: string): string {
   if (!prepared) return esc(s);
   let html = esc(s);
-  const values = [...prepared.vault.byToken.values()].sort((a, b) => b.length - a.length);
+  const cards = [...prepared.vault.byToken].filter(([t]) => /CARD_\d+\]\]$/.test(t)).map(([, v]) => maskCard(v));
+  const values = [...prepared.vault.byToken.values(), ...cards].sort((a, b) => b.length - a.length);
   for (const v of values) {
     const ev = esc(v);
     if (ev.length < 3) continue;

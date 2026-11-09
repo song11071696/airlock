@@ -27,10 +27,24 @@ export function rulesOnlyAnalysis(text: string, opts: { cloudRefused?: boolean }
         "Enable Gemini Nano or connect to the internet for a full explanation.",
     deadlines,
     amounts,
-    nextSteps: deadlines.length ? ["Note the earliest deadline above in your calendar today."] : [],
+    nextSteps: [
+      ...(deadlines.length ? ["Note the earliest deadline above in your calendar today."] : []),
+      ...senderContactStep(text),
+    ],
     rightsAndOptions: [],
     questionsToAsk: [],
     replyDraft: "",
     caveat: "Basic scan only. Not legal advice.",
   };
+}
+
+/** "Contact the sender: call [[SENDER_PHONE_1]] · email [[SENDER_EMAIL_1]] · write to [[SENDER_ADDRESS_1]]" — tokens are filled back locally. */
+function senderContactStep(text: string): string[] {
+  const first = (kind: string) => new RegExp(`\\[\\[SENDER_${kind}_\\d+\\]\\]`).exec(text)?.[0];
+  const parts = [
+    first("PHONE") && `call ${first("PHONE")}`,
+    first("EMAIL") && `email ${first("EMAIL")}`,
+    first("ADDRESS") && `write to ${first("ADDRESS")}`,
+  ].filter(Boolean);
+  return parts.length ? [`To contact the sender: ${parts.join(" · ")}.`] : [];
 }

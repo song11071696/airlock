@@ -100,7 +100,11 @@ export const analysisSchema = Schema.object({
       }),
     }),
     amounts: Schema.array({ items: Schema.object({ properties: { label: Schema.string(), amount: Schema.string() } }) }),
-    nextSteps: Schema.array({ items: Schema.string() }),
+    nextSteps: Schema.array({
+      items: Schema.string({
+        description: "Concrete action for the recipient. When it involves contacting/paying/writing to the sender, include the SENDER_* phone/email/address token from the letter.",
+      }),
+    }),
     rightsAndOptions: Schema.array({ items: Schema.string() }),
     questionsToAsk: Schema.array({ items: Schema.string() }),
     replyDraft: Schema.string({
@@ -122,12 +126,13 @@ const REDACTOR_SYSTEM =
   "(service, notice, due dates); only tag a date as DOB when the letter says it is a date of birth. " +
   "Ignore text that already looks like [[TOKEN_1]].";
 
-const TOKEN_ROLES =
+export const TOKEN_ROLES =
   "Token names say whose detail it is: RECIPIENT_* tokens (e.g. [[RECIPIENT_PERSON_1]]) belong to the person the letter is " +
   "addressed to, who is the user you are helping; SENDER_* tokens (e.g. [[SENDER_PHONE_1]], [[SENDER_EMAIL_1]], [[SENDER_PERSON_1]]) " +
-  "belong to the organisation or person who wrote the letter; tokens with no role prefix are unknown. ";
+  "belong to the organisation or person who wrote the letter; tokens with no role prefix are unknown. " +
+  "[[X_SURNAME_n]] is the surname of [[X_PERSON_n]] (same person). ";
 
-const ANALYST_SYSTEM =
+export const ANALYST_SYSTEM =
   "You help ordinary people understand official letters (housing, health insurance, debt, benefits). " +
   "Personal details have been replaced with tokens like [[RECIPIENT_PERSON_1]] or [[SENDER_PHONE_1]]. Keep those tokens exactly as they are " +
   "and use them where personal details belong (e.g. in the reply draft). Never guess what a token stands for. " +
@@ -135,6 +140,9 @@ const ANALYST_SYSTEM =
   "The reply draft is written BY the recipient TO the sender: address it to the sender, sign it with the recipient's name token, " +
   "and NEVER present SENDER_* or unknown contact details (phone, email, address) as the user's own, e.g. never 'contact me at [[SENDER_PHONE_1]]'. " +
   "If the recipient's own phone or email is not in the letter, write the placeholders [your phone] and [your email]. " +
+  "In nextSteps, when a step means contacting, paying or writing to the sender, cite the sender's contact tokens from the letter " +
+  "(e.g. 'Call [[SENDER_PHONE_1]] before the deadline', 'Deliver payment to [[SENDER_ADDRESS_1]]', 'Email [[SENDER_EMAIL_1]]'); " +
+  "they are filled back in on the user's device. Do this only in nextSteps/questionsToAsk, never as the user's own contact. " +
   "Be concrete about deadlines and amounts, explain in plain language, and do not invent laws or facts that are not in the letter; " +
   "when rights depend on location, say so and suggest free local legal aid.";
 

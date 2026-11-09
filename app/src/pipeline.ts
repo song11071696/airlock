@@ -83,7 +83,9 @@ export async function runAnalysis(p: Prepared, modelAvailable: boolean, log: Ste
   try {
     const r = await analyse(p.redacted);
     tokenised = r.value;
-    if (typeof tokenised?.replyDraft === "string") tokenised = { ...tokenised, replyDraft: guardReplyDraft(tokenised.replyDraft) };
+    // The model may cite SENDER_* contact tokens in "What to do next" (they are filled back below); the guard only
+    // stops them being presented as the user's own contact ("contact me at ...", sign-off name) anywhere in the result.
+    tokenised = guardAnalysis(tokenised);
     source = r.source;
     ms = r.ms;
     log.push({ label: "Analyse redacted letter", source, ms, detail: source === "in_cloud" ? `${bytesSent} bytes sent, 0 personal details` : "nothing left this device" });
@@ -105,15 +107,24 @@ export async function runAnalysis(p: Prepared, modelAvailable: boolean, log: Ste
   return { analysis, tokenised, source, ms, bytesSent: source === "in_cloud" ? bytesSent : 0, cloudNotice };
 }
 
-export function rehydrateAnalysis(a: Analysis, vault: Vault): Analysis {
-  // Walk every string in the object and re-hydrate it.
+function mapStrings<T>(a: T, f: (s: string) => string): T {
   const walk = (v: unknown): unknown => {
-    if (typeof v === "string") return rehydrate(v, vault);
+    if (typeof v === "string") return f(v);
     if (Array.isArray(v)) return v.map(walk);
     if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
     return v;
   };
-  return walk(a) as Analysis;
+  return walk(a) as T;
+}
+
+/** Apply the reply guard to every string the model returned (still tokenised). */
+export function guardAnalysis(a: Analysis): Analysis {
+  return a && typeof a === "object" ? mapStrings(a, guardReplyDraft) : a;
+}
+
+/** Walk every string in the object and re-hydrate it locally (card numbers masked to the last 4). */
+export function rehydrateAnalysis(a: Analysis, vault: Vault): Analysis {
+  return mapStrings(a, (s) => rehydrate(s, vault, { maskCards: true }));
 }
 
 export async function followUp(p: Prepared, question: string, log: StepLog[]): Promise<{ text: string; source: Source; ms: number }> {
@@ -123,7 +134,7 @@ export async function followUp(p: Prepared, question: string, log: StepLog[]): P
   if (leakCheck(q, p.vault).length) throw new Error("Blocked: your question contains personal details that could not be removed.");
   const r = await ask(p.redacted, q);
   log.push({ label: "Follow-up question", source: r.source, ms: r.ms, detail: r.source === "in_cloud" ? "redacted question sent" : "answered on this device" });
-  return { text: rehydrate(guardReplyDraft(r.value), p.vault), source: r.source, ms: r.ms };
+  return { text: rehydrate(guardReplyDraft(r.value), p.vault, { maskCards: true }), source: r.source, ms: r.ms };
 }
 
 export function errMsg(e: unknown): string {

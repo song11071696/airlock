@@ -58,7 +58,7 @@ describe("tokenise / rehydrate", () => {
   it("uses one stable token per value, longest first", () => {
     const ents = expandNames([{ text: "Maria Lopez", type: "PERSON" as const, by: "user" as const }]);
     const { redacted } = redact("Dear Maria Lopez. Ms. Lopez must pay. Maria Lopez agrees.", ents);
-    expect(redacted).toBe("Dear [[PERSON_1]]. Ms. [[PERSON_2]] must pay. [[PERSON_1]] agrees.");
+    expect(redacted).toBe("Dear [[PERSON_1]]. Ms. [[SURNAME_1]] must pay. [[PERSON_1]] agrees.");
   });
 
   it("rehydrates tokens inside model output and leaves unknown tokens visible", () => {

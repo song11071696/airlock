@@ -105,6 +105,7 @@ const RULES: Rule[] = [
     type: "ADDRESS",
     re: /\b\d{1,6}\s+(?:[A-Z][a-z0-9]+\s){1,4}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct|Place|Pl|Way|Terrace|Ter|Parkway|Pkwy)\.?(?:,?\s+(?:Apt|Apartment|Unit|Suite|Ste|#)\.?\s*[A-Za-z0-9-]+)?/g,
   },
+  { type: "ADDRESS", re: /\bP\.?\s?O\.?\s+Box\s+\d{1,7}\b/gi }, // "PO Box 4410" (people use PO boxes too)
   { type: "POSTCODE", re: /\b[A-Z]{2}\s+(\d{5}(?:-\d{4})?)\b/g, group: 1 }, // "CA 94110"
   {
     // Salutations and labelled names: "Dear Maria Lopez", "Tenant: John A. Smith", "Dear Mr. Daniel Okafor"
@@ -190,6 +191,17 @@ function tokenFor(vault: Vault, e: Entity): string {
   const key = e.text.toLowerCase();
   const existing = vault.byValue.get(key);
   if (existing) return existing;
+  // A surname split off a full name shares the full name's number, so the model can tell they are one person:
+  // "James T. Whitaker" -> [[RECIPIENT_PERSON_1]], "Mr. Whitaker" -> "Mr. [[RECIPIENT_SURNAME_1]]".
+  if (e.type === "PERSON" && e.parent) {
+    const m = /^\[\[((?:[A-Z]+_)?)PERSON_(\d+)\]\]$/.exec(vault.byValue.get(e.parent.toLowerCase()) ?? "");
+    const token = m ? `[[${m[1]}SURNAME_${m[2]}]]` : "";
+    if (token && !vault.byToken.has(token)) {
+      vault.byValue.set(key, token);
+      vault.byToken.set(token, e.text);
+      return token;
+    }
+  }
   const kind = (e.role ? e.role.toUpperCase() + "_" : "") + e.type;
   const n = (vault.counters[kind] ?? 0) + 1;
   vault.counters[kind] = n;
@@ -220,9 +232,23 @@ export function redact(text: string, entities: Entity[], vault: Vault = newVault
   return { redacted: out as Redacted, vault };
 }
 
-/** Put the real values back. Runs locally; unknown tokens are left visible. */
-export function rehydrate(text: string, vault: Vault): string {
-  return text.replace(TOKEN_RE, (tok) => vault.byToken.get(tok) ?? tok);
+/** Last four digits of a card, for display: "4111 1111 1111 1111" -> "•••• 1111". */
+export function maskCard(v: string): string {
+  const d = v.replace(/\D/g, "");
+  return d.length >= 4 ? `•••• ${d.slice(-4)}` : v;
+}
+
+/**
+ * Put the real values back. Runs locally; unknown tokens are left visible.
+ * `maskCards`: card numbers come back as "•••• 1234" (used for everything the model wrote, incl. the reply draft,
+ * so a full card number is never pasted into a letter the user sends).
+ */
+export function rehydrate(text: string, vault: Vault, opts: { maskCards?: boolean } = {}): string {
+  return text.replace(TOKEN_RE, (tok, kind: string) => {
+    const v = vault.byToken.get(tok);
+    if (v === undefined) return tok;
+    return opts.maskCards && /(?:^|_)CARD$/.test(kind) ? maskCard(v) : v;
+  });
 }
 
 /** Final safety check before anything leaves the device: no known original value may remain. */
