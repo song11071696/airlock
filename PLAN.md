@@ -83,7 +83,7 @@ Record with OBS/Chrome screen capture; captions burned in with ffmpeg. All sampl
 
 ## 6. Milestones (all dates Asia/Shanghai; hard deadline Dec 1 06:00 CST = Nov 30 14:00 PT)
 
-- **Nov 9** — Research, plan, v0 app (paste → rules redaction → cloud/on-device analysis → re-hydrate, status bar, fallbacks), tests. ✅ target today.
+- **Nov 9** — Research, plan, v0 app (paste → rules redaction → cloud/on-device analysis → re-hydrate, status bar, fallbacks), tests. ✅ done (20 tests pass, build passes; see AUDIT.md).
 - **Nov 10–12** — Firebase project (Spark, Gemini Developer API), App Check debug token, first real cloud call; real Chrome + Gemini Nano test on a physical desktop; read official rules once published.
 - **Nov 13–16** — Image path (Nano transcription), Nano entity extraction tuning on 10 fictional letters, chunking, click-to-withhold review UI, deadline countdown.
 - **Nov 17–20** — Q&A, offline mode polish, accessibility pass, mobile-width layout (cloud-only on mobile with clear label), Firebase Hosting deploy + reCAPTCHA App Check.
