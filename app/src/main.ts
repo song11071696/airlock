@@ -1,4 +1,4 @@
-import { cloudConfigured, cloudReachable, CLOUD_MODEL, deviceState, prepareDeviceModel, transcribeImage, type Analysis, type DeviceState } from "./ai";
+import { cloudConfigured, cloudReachable, CLOUD_MODEL, CloudRefusedError, deviceState, getCloudProblem, resetCloudProblem, prepareDeviceModel, transcribeImage, type Analysis, type DeviceState } from "./ai";
 import { build, discover, errMsg, followUp, runAnalysis, type Prepared, type StepLog } from "./pipeline";
 import { TOKEN_RE, type Entity } from "./pii";
 import { SAMPLES } from "./samples";
@@ -36,8 +36,13 @@ async function refreshStatus(): Promise<void> {
   pn.className = "pill " + (navigator.onLine ? "ok" : "warn");
 
   const pc = $("pill-cloud");
-  pc.textContent = !cloudConfigured ? "Cloud: not configured" : cloudReachable() ? `Cloud: ${CLOUD_MODEL}` : "Cloud: unreachable (offline)";
-  pc.className = "pill " + (cloudReachable() ? "cloud" : "warn");
+  const problem = getCloudProblem();
+  pc.textContent = !cloudConfigured ? "Cloud: not configured"
+    : problem ? problem.short
+    : cloudReachable() ? `Cloud: ${CLOUD_MODEL}` : "Cloud: unreachable (offline)";
+  pc.title = problem ? problem.message : "";
+  pc.className = "pill " + (problem ? "bad" : cloudReachable() ? "cloud" : "warn");
+  $("btn-cloud-retry").hidden = !problem;
   updateRoute();
 }
 
@@ -53,6 +58,10 @@ $("btn-device").addEventListener("click", async () => {
   }
   btn.disabled = false;
   await refreshStatus();
+});
+$("btn-cloud-retry").addEventListener("click", () => {
+  resetCloudProblem();
+  refreshStatus();
 });
 window.addEventListener("online", refreshStatus);
 window.addEventListener("offline", refreshStatus);
@@ -214,6 +223,10 @@ $("btn-analyse").addEventListener("click", async () => {
   try {
     const r = await runAnalysis(prepared, device === "available" || cloudReachable(), log);
     renderResult(r.analysis, r.tokenised, r.source, r.ms, r.bytesSent);
+    const notice = $("cloud-notice");
+    notice.hidden = !r.cloudNotice;
+    notice.textContent = r.cloudNotice ? `${r.cloudNotice} Showing the ${r.source === "on_device" ? "on-device (Gemini Nano)" : "basic local"} result instead.` : "";
+    refreshStatus();
     $("step-result").hidden = false;
     $("step-ask").hidden = false;
     $("step-result").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -283,7 +296,9 @@ async function askQuestion(): Promise<void> {
     const r = await followUp(prepared, q, log);
     box.innerHTML = `<p><strong>${esc(q)}</strong> <span class="badge ${r.source}">${LABEL[r.source]}</span></p><p>${highlightFilled(r.text)}</p>`;
   } catch (e) {
-    box.innerHTML = `<p><strong>${esc(q)}</strong> <span class="badge error">ERROR</span></p><p class="muted">${esc(errMsg(e))}</p>`;
+    const msg = e instanceof CloudRefusedError ? e.problem.message : errMsg(e);
+    box.innerHTML = `<p><strong>${esc(q)}</strong> <span class="badge error">ERROR</span></p><p class="muted">${esc(msg)}</p>`;
+    refreshStatus();
     log.push({ label: "Follow-up question", source: "error", ms: 0, detail: errMsg(e) });
   }
   $<HTMLInputElement>("question").value = "";

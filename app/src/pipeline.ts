@@ -1,5 +1,5 @@
 // Airlock pipeline: raw letter -> local PII discovery -> tokenised payload -> analysis -> local re-hydration.
-import { analyse, ask, findEntitiesOnDevice, type Analysis, type Source } from "./ai";
+import { analyse, ask, CloudRefusedError, findEntitiesOnDevice, getCloudProblem, type Analysis, type Source } from "./ai";
 import { rulesOnlyAnalysis } from "./fallback";
 import {
   chunk, expandNames, findByRules, leakCheck, mergeEntities, newVault, redact, rehydrate, sanitizeModelEntities,
@@ -64,6 +64,8 @@ export interface Result {
   source: Source;
   ms: number;
   bytesSent: number;
+  /** Plain-language reason the cloud half could not be used, when it was refused. */
+  cloudNotice?: string;
 }
 
 export async function runAnalysis(p: Prepared, modelAvailable: boolean, log: StepLog[]): Promise<Result> {
@@ -72,6 +74,7 @@ export async function runAnalysis(p: Prepared, modelAvailable: boolean, log: Ste
   let tokenised: Analysis;
   let source: Source;
   let ms: number;
+  let cloudNotice: string | undefined;
   try {
     const r = await analyse(p.redacted);
     tokenised = r.value;
@@ -79,7 +82,10 @@ export async function runAnalysis(p: Prepared, modelAvailable: boolean, log: Ste
     ms = r.ms;
     log.push({ label: "Analyse redacted letter", source, ms, detail: source === "in_cloud" ? `${bytesSent} bytes sent, 0 personal details` : "nothing left this device" });
   } catch (e) {
-    if (modelAvailable) log.push({ label: "Analyse redacted letter", source: "error", ms: 0, detail: errMsg(e) });
+    if (e instanceof CloudRefusedError) cloudNotice = e.problem.message;
+    else if (getCloudProblem()) cloudNotice = getCloudProblem()!.message;
+    if (e instanceof CloudRefusedError) log.push({ label: "Analyse redacted letter (cloud)", source: "error", ms: 0, detail: e.problem.short + " · " + errMsg(e.problem.raw) });
+    else if (modelAvailable) log.push({ label: "Analyse redacted letter", source: "error", ms: 0, detail: errMsg(e) });
     else log.push({ label: "Analyse redacted letter", source: "skipped", ms: 0, detail: "no model available" });
     const t0 = performance.now();
     tokenised = rulesOnlyAnalysis(p.redacted);
@@ -90,7 +96,7 @@ export async function runAnalysis(p: Prepared, modelAvailable: boolean, log: Ste
   const t0 = performance.now();
   const analysis = rehydrateAnalysis(tokenised, p.vault);
   log.push({ label: "Put your details back", source: "local_rules", ms: Math.round(performance.now() - t0), detail: `${p.vault.byToken.size} tokens re-filled on this device` });
-  return { analysis, tokenised, source, ms, bytesSent: source === "in_cloud" ? bytesSent : 0 };
+  return { analysis, tokenised, source, ms, bytesSent: source === "in_cloud" ? bytesSent : 0, cloudNotice };
 }
 
 export function rehydrateAnalysis(a: Analysis, vault: Vault): Analysis {

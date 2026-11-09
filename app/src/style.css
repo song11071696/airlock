@@ -106,3 +106,5 @@ button.small { padding: 4px 10px; font-size: 12.5px; }
 .log li .badge { margin-right: 8px; }
 footer { text-align: center; color: var(--muted); font-size: 12.5px; padding: 20px; }
 .busy { opacity: .6; pointer-events: none; }
+
+.notice { border: 1px solid var(--rules); color: var(--rules); border-radius: 10px; padding: 10px 12px; font-size: 14px; margin: 0 0 12px; }

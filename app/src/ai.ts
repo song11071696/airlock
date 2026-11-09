@@ -39,18 +39,33 @@ const app: FirebaseApp = initializeApp(
   cloudConfigured ? firebaseConfig : { apiKey: "not-configured", projectId: "not-configured", appId: "not-configured" },
 );
 
-// App Check is enforced for Firebase AI Logic (required since 2026-11-02).
-if (cloudConfigured) {
-  if (env.DEV || env.VITE_APPCHECK_DEBUG === "true") {
-    // Prints a debug token in the console; register it in Firebase console > App Check > Manage debug tokens.
-    (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN: boolean | string }).FIREBASE_APPCHECK_DEBUG_TOKEN =
-      env.VITE_APPCHECK_DEBUG_TOKEN || true;
-  }
-  if (env.VITE_RECAPTCHA_SITE_KEY || env.DEV) {
+// ---------- App Check (optional, off by default) ----------
+// Firebase AI Logic can enforce App Check. The demo deploy runs WITHOUT App Check: reCAPTCHA v3 can no longer be
+// registered for new apps and reCAPTCHA Enterprise needs GCP billing (this project is free Spark only).
+// VITE_APPCHECK = "off" (default) | "debug" | "recaptcha-v3". If the API rejects un-attested calls, the cloud
+// half fails gracefully (see classifyCloudError) and the app keeps working on device / with local rules.
+export type AppCheckMode = "off" | "debug" | "recaptcha-v3";
+
+export function parseAppCheckMode(v: unknown): AppCheckMode {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "debug" || s === "recaptcha-v3" ? s : "off";
+}
+
+export const appCheckMode: AppCheckMode = cloudConfigured ? parseAppCheckMode(env.VITE_APPCHECK) : "off";
+
+if (appCheckMode === "debug") {
+  // Prints a debug token in the console; register it in Firebase console > App Check > Manage debug tokens.
+  (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN: boolean | string }).FIREBASE_APPCHECK_DEBUG_TOKEN =
+    env.VITE_APPCHECK_DEBUG_TOKEN || true;
+}
+if (appCheckMode === "debug" || (appCheckMode === "recaptcha-v3" && env.VITE_RECAPTCHA_SITE_KEY)) {
+  try {
     initializeAppCheck(app, {
       provider: new ReCaptchaV3Provider(env.VITE_RECAPTCHA_SITE_KEY || "debug-only"),
       isTokenAutoRefreshEnabled: true,
     });
+  } catch (e) {
+    console.warn("[Airlock] App Check init failed; continuing without it", e);
   }
 }
 
@@ -216,8 +231,76 @@ export async function assertOnDevice(): Promise<void> {
   }
 }
 
+// ---------- cloud rejection handling ----------
+
+export type CloudErrorKind = "app_check" | "auth" | "quota" | "model" | "network" | "other";
+
+export interface CloudProblem {
+  kind: CloudErrorKind;
+  /** Short line for the status pill. */
+  short: string;
+  /** Plain-language explanation for the user. */
+  message: string;
+  /** Raw SDK error text (trimmed), for the step log. */
+  raw: string;
+}
+
+/** Map a Firebase AI Logic / fetch error to something a user can understand. Pure; unit-tested. */
+export function classifyCloudError(e: unknown): CloudProblem {
+  const raw0 = e instanceof Error ? `${e.message} ${(e as { code?: string }).code ?? ""} ${JSON.stringify((e as { customErrorData?: unknown }).customErrorData ?? "")}` : String(e);
+  const raw = raw0.replace(/\s+/g, " ").trim().slice(0, 300);
+  const t = raw.toLowerCase();
+  const status = /\[(\d{3})/.exec(raw)?.[1] ?? /\b(401|403|404|429)\b/.exec(raw)?.[1];
+  const tail = " Your letter stayed private: only redacted text was ever prepared to send.";
+  if (/app.?check|attestation|firebase-app-check|unauthenticated/.test(t) || status === "401") {
+    return { kind: "app_check", short: "Cloud: refused (App Check)", raw,
+      message: "Firebase refused the cloud request because this demo has no App Check attestation (App Check is enforced for Firebase AI Logic, and the only provider for new apps needs paid billing)." + tail };
+  }
+  if (status === "429" || /quota|resource.?exhausted|rate.?limit/.test(t)) {
+    return { kind: "quota", short: "Cloud: busy (free quota)", raw,
+      message: "The free Gemini quota for this demo is used up for now. Try again in a minute." + tail };
+  }
+  if (status === "403" || /permission|api.?key|forbidden|has not been used|disabled|referer|referrer/.test(t)) {
+    return { kind: "auth", short: "Cloud: refused (permission)", raw,
+      message: "Firebase refused the cloud request (permission / API key restriction for this site)." + tail };
+  }
+  if (status === "404" || /not.?found|model/.test(t) && /unsupported|not found|unknown/.test(t)) {
+    return { kind: "model", short: "Cloud: model unavailable", raw,
+      message: "The cloud model is not available to this project." + tail };
+  }
+  if (/failed to fetch|network|fetch-error|timeout|offline/.test(t)) {
+    return { kind: "network", short: "Cloud: unreachable", raw,
+      message: "Could not reach the cloud (network)." + tail };
+  }
+  return { kind: "other", short: "Cloud: error", raw, message: "The cloud request failed." + tail };
+}
+
+let cloudProblem: CloudProblem | null = null;
+/** Last hard refusal from the cloud (App Check, permission, model). Null when none. */
+export function getCloudProblem(): CloudProblem | null {
+  return cloudProblem;
+}
+/** Forget a previous refusal so the next call tries the cloud again. */
+export function resetCloudProblem(): void {
+  cloudProblem = null;
+}
+function noteCloudFailure(e: unknown): CloudProblem {
+  const p = classifyCloudError(e);
+  // Hard refusals will not fix themselves: stop trying the cloud until the user asks to retry.
+  if (p.kind === "app_check" || p.kind === "auth" || p.kind === "model") cloudProblem = p;
+  return p;
+}
+
+/** Error thrown to callers when the cloud refused and no on-device model could take over. */
+export class CloudRefusedError extends Error {
+  constructor(public problem: CloudProblem) {
+    super(problem.message);
+    this.name = "CloudRefusedError";
+  }
+}
+
 export function cloudReachable(): boolean {
-  return cloudConfigured && navigator.onLine;
+  return cloudConfigured && navigator.onLine && !cloudProblem;
 }
 
 // ---------- calls ----------
@@ -277,8 +360,10 @@ export function analyse(letter: Redacted): Promise<Timed<Analysis>> {
       const r = await analystCloud.generateContent(prompt);
       return { value: JSON.parse(r.response.text()) as Analysis, source: srcOf(r.response.inferenceSource) };
     } catch (cloudErr) {
+      const problem = noteCloudFailure(cloudErr);
+      console.warn("[Airlock] cloud analysis failed:", problem.kind, problem.raw);
       if ((await deviceState()) === "available") return runLocal();
-      throw cloudErr;
+      throw new CloudRefusedError(problem);
     }
   });
 }
@@ -289,8 +374,18 @@ export function ask(letter: Redacted, question: Redacted): Promise<Timed<string>
   const model = local ? helperLocal : helperHybrid;
   return timed(async () => {
     if (local) await assertOnDevice();
-    const r = await model.generateContent(`Letter:\n"""\n${letter}\n"""\n\nQuestion: ${question}`);
-    return { value: r.response.text(), source: srcOf(r.response.inferenceSource) };
+    try {
+      const r = await model.generateContent(`Letter:\n"""\n${letter}\n"""\n\nQuestion: ${question}`);
+      return { value: r.response.text(), source: srcOf(r.response.inferenceSource) };
+    } catch (e) {
+      if (local) throw e;
+      const problem = noteCloudFailure(e);
+      if ((await deviceState()) === "available") {
+        const r = await helperLocal.generateContent(`Letter:\n"""\n${letter}\n"""\n\nQuestion: ${question}`);
+        return { value: r.response.text(), source: srcOf(r.response.inferenceSource) };
+      }
+      throw new CloudRefusedError(problem);
+    }
   });
 }
 

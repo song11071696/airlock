@@ -21,6 +21,7 @@
         <button id="btn-device" class="small" hidden>Enable Gemini Nano</button>
         <span class="pill" id="pill-net">Network: …</span>
         <span class="pill" id="pill-cloud">Cloud: …</span>
+        <button id="btn-cloud-retry" class="small" hidden>Retry cloud</button>
       </div>
     </header>
 
@@ -67,6 +68,7 @@
 
       <section class="card" id="step-result" hidden>
         <h2><span class="num">3</span> What it means <span id="result-badge" class="badge"></span></h2>
+        <p id="cloud-notice" class="notice" role="alert" hidden></p>
         <div id="result"></div>
         <details class="raw">
           <summary>Show what the model actually returned (tokens, before your details were put back)</summary>

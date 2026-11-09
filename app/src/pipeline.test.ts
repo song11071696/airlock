@@ -2,16 +2,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the Firebase layer: we test routing, privacy and fallback logic, not Google's SDK.
 const calls: { fn: string; payload: string }[] = [];
-let cloudFails = false;
+let cloudFails: boolean | "refused" = false;
 let deviceEntities: unknown = { entities: [] };
 
 vi.mock("./ai", () => ({
+  CloudRefusedError: class CloudRefusedError extends Error {
+    constructor(public problem: { kind: string; short: string; message: string; raw: string }) {
+      super(problem.message);
+    }
+  },
+  getCloudProblem: () => null,
   findEntitiesOnDevice: vi.fn(async (raw: string) => {
     calls.push({ fn: "findEntitiesOnDevice", payload: raw });
     return { value: deviceEntities, source: "on_device", ms: 5 };
   }),
   analyse: vi.fn(async (letter: string) => {
     calls.push({ fn: "analyse", payload: letter });
+    if (cloudFails === "refused") {
+      const { CloudRefusedError } = await import("./ai");
+      throw new CloudRefusedError({ kind: "app_check", short: "Cloud: refused (App Check)", message: "Firebase refused the cloud request.", raw: "[401 ] App Check" });
+    }
     if (cloudFails) throw new Error("FETCH_ERROR");
     return {
       value: { letterType: "Notice", plainSummary: "[[PERSON_1]] owes rent.", replyDraft: "Dear [[PERSON_2]],\nI, [[PERSON_1]], ..." },
@@ -96,5 +106,16 @@ describe("pipeline", () => {
     expect(sent).not.toContain("Maria Elena Lopez");
     expect(sent).not.toContain("maria.l@mail.example");
     expect(r.text).toBe("Yes, Maria Elena Lopez can.");
+  });
+
+  it("falls back to the local scan with a plain-language notice when the cloud refuses (App Check)", async () => {
+    cloudFails = "refused";
+    const log: StepLog[] = [];
+    const p = build(eviction, await discover(eviction, false, log), new Set(), log);
+    const r = await runAnalysis(p, true, log);
+    expect(r.source).toBe("local_rules");
+    expect(r.cloudNotice).toContain("refused");
+    expect(r.bytesSent).toBe(0);
+    expect(log.some((l) => l.source === "error" && l.detail?.includes("App Check"))).toBe(true);
   });
 });
