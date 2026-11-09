@@ -244,11 +244,20 @@ export function maskCard(v: string): string {
  * so a full card number is never pasted into a letter the user sends).
  */
 export function rehydrate(text: string, vault: Vault, opts: { maskCards?: boolean } = {}): string {
-  return text.replace(TOKEN_RE, (tok, kind: string) => {
+  return normaliseTokens(text).replace(TOKEN_RE, (tok, kind: string) => {
     const v = vault.byToken.get(tok);
     if (v === undefined) return tok;
     return opts.maskCards && /(?:^|_)CARD$/.test(kind) ? maskCard(v) : v;
   });
+}
+
+/**
+ * Small models sometimes mangle a token's brackets ("[[SENDER_PERSON_1]", "[SENDER_PERSON_1]]", "[SENDER_PERSON_1]").
+ * Repair those to the canonical "[[KIND_N]]" so they can be filled back instead of showing up as raw tokens.
+ */
+export function normaliseTokens(text: string): string {
+  return text.replace(/\[{1,2}((?:RECIPIENT_|SENDER_)?[A-Z]+(?:_[A-Z]+)*_\d+)\]{1,2}/g, (m, body: string) =>
+    /^(?:RECIPIENT_|SENDER_)?(?:PERSON|PHONE|EMAIL|ADDRESS|POSTCODE|ACCOUNT|CARD|ID_NUMBER|DOB|ORG|OTHER|[A-Z]+)_\d+$/.test(body) ? `[[${body}]]` : m);
 }
 
 /** Final safety check before anything leaves the device: no known original value may remain. */

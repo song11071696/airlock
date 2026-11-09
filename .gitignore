@@ -6,3 +6,4 @@ app/dist/
 app/.env
 app/.env.local
 research/*.html
+video/

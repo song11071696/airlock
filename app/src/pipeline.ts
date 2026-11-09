@@ -89,6 +89,10 @@ export async function runAnalysis(p: Prepared, modelAvailable: boolean, log: Ste
     source = r.source;
     ms = r.ms;
     log.push({ label: "Analyse redacted letter", source, ms, detail: source === "in_cloud" ? `${bytesSent} bytes sent, 0 personal details` : "nothing left this device" });
+    // PREFER_IN_CLOUD fell back to Nano (e.g. the network blocked the cloud endpoint): say so instead of failing silently.
+    if (source === "on_device" && typeof navigator !== "undefined" && navigator.onLine) {
+      cloudNotice = getCloudProblem()?.message ?? "The cloud model couldn't be reached from this network, so nothing left this device.";
+    }
   } catch (e) {
     if (e instanceof CloudRefusedError) cloudNotice = e.problem.message;
     else if (getCloudProblem()) cloudNotice = getCloudProblem()!.message;
@@ -124,7 +128,17 @@ export function guardAnalysis(a: Analysis): Analysis {
 
 /** Walk every string in the object and re-hydrate it locally (card numbers masked to the last 4). */
 export function rehydrateAnalysis(a: Analysis, vault: Vault): Analysis {
-  return mapStrings(a, (s) => rehydrate(s, vault, { maskCards: true }));
+  return mapStrings(a, (s) => tidyBrackets(rehydrate(s, vault, { maskCards: true })));
+}
+
+/** Drop the unmatched "[" / "]" a small model sometimes wraps a sentence in ("[Call ... deadline"). */
+export function tidyBrackets(s: string): string {
+  let t = s.trim();
+  const opens = (t.match(/\[/g) ?? []).length, closes = (t.match(/\]/g) ?? []).length;
+  if (t.startsWith("[") && t.endsWith("]") && opens === 1 && closes === 1) return t.slice(1, -1).trim();
+  if (t.startsWith("[") && opens === closes + 1) t = t.slice(1).trimStart();
+  if (t.endsWith("]") && closes === opens + 1) t = t.slice(0, -1).trimEnd();
+  return t === s.trim() ? s : t;
 }
 
 export async function followUp(p: Prepared, question: string, log: StepLog[]): Promise<{ text: string; source: Source; ms: number }> {
