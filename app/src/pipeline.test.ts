@@ -24,14 +24,18 @@ vi.mock("./ai", () => ({
     }
     if (cloudFails) throw new Error("FETCH_ERROR");
     return {
-      value: { letterType: "Notice", plainSummary: "[[PERSON_1]] owes rent.", replyDraft: "Dear [[PERSON_2]],\nI, [[PERSON_1]], ..." },
+      value: {
+        letterType: "Notice",
+        plainSummary: "[[RECIPIENT_PERSON_1]] owes rent.",
+        replyDraft: "Dear [[SENDER_PERSON_1]],\nI, [[RECIPIENT_PERSON_1]], will pay. Please contact me at [[SENDER_PHONE_1]].\nSincerely,\n[[RECIPIENT_PERSON_1]]",
+      },
       source: "in_cloud",
       ms: 10,
     };
   }),
   ask: vi.fn(async (letter: string, q: string) => {
     calls.push({ fn: "ask", payload: letter + "\n" + q });
-    return { value: "Yes, [[PERSON_1]] can.", source: "on_device", ms: 3 };
+    return { value: "Yes, [[RECIPIENT_PERSON_1]] can.", source: "on_device", ms: 3 };
   }),
 }));
 
@@ -74,7 +78,7 @@ describe("pipeline", () => {
     expect(r.source).toBe("in_cloud");
     expect(r.analysis.plainSummary).toContain("Maria Elena Lopez");
     expect(r.analysis.replyDraft).toContain("Daniel Okafor");
-    expect(r.tokenised.plainSummary).toContain("[[PERSON_1]]");
+    expect(r.tokenised.plainSummary).toContain("[[RECIPIENT_PERSON_1]]");
     expect(r.bytesSent).toBeGreaterThan(0);
   });
 
@@ -117,5 +121,54 @@ describe("pipeline", () => {
     expect(r.cloudNotice).toContain("refused");
     expect(r.bytesSent).toBe(0);
     expect(log.some((l) => l.source === "error" && l.detail?.includes("App Check"))).toBe(true);
+  });
+
+  it("Nano post-filter in discover(): service date stays visible, label bleed trimmed to one account token", async () => {
+    deviceEntities = { entities: [
+      { text: "Oakridge, CA 94110", type: "POSTCODE" },
+      { text: "Tenant Account No: 88-1234-77", type: "ACCOUNT" },
+      { text: "November 6", type: "DOB" },
+    ] };
+    const log: StepLog[] = [];
+    const p = build(eviction, await discover(eviction, true, log), new Set(), log);
+    expect(p.entities.some((e) => e.type === "DOB")).toBe(false);
+    expect(p.redacted).toContain("Date of service: November 6");
+    expect(p.redacted).toContain("Tenant Account No: [[RECIPIENT_ACCOUNT_1]]");
+    expect(p.redacted).not.toContain("88-1234-77");
+    expect(p.redacted).not.toContain("Oakridge, CA 94110");
+    expect(p.leaks).toEqual([]);
+    expect(log[1].detail).toContain("dropped");
+    await runAnalysis(p, true, log);
+    expect(calls.find((c) => c.fn === "analyse")!.payload).toContain("November 6");
+  });
+
+  it("reply draft never offers the landlord's phone as the tenant's own", async () => {
+    const log: StepLog[] = [];
+    const p = build(eviction, await discover(eviction, false, log), new Set(), log);
+    const sent = calls.length;
+    const r = await runAnalysis(p, true, log);
+    expect(calls.length).toBe(sent + 1);
+    expect(r.analysis.replyDraft).not.toContain("(415) 555-0198");
+    expect(r.analysis.replyDraft).toContain("contact me at [your phone]");
+    expect(r.analysis.replyDraft).toContain("Dear Daniel Okafor");
+    expect(r.analysis.replyDraft).toMatch(/Sincerely,\nMaria Elena Lopez$/);
+  });
+
+  it("local scan after a cloud refusal does not tell the user to connect to the internet", async () => {
+    cloudFails = "refused";
+    const log: StepLog[] = [];
+    const p = build(eviction, await discover(eviction, false, log), new Set(), log);
+    const r = await runAnalysis(p, false, log);
+    expect(r.source).toBe("local_rules");
+    expect(r.analysis.plainSummary).not.toMatch(/internet/i);
+    expect(r.analysis.plainSummary).toMatch(/declined/);
+  });
+
+  it("local scan with no model and no refusal still suggests Nano or going online", async () => {
+    cloudFails = true;
+    const log: StepLog[] = [];
+    const p = build(eviction, await discover(eviction, false, log), new Set(), log);
+    const r = await runAnalysis(p, false, log);
+    expect(r.analysis.plainSummary).toMatch(/internet/);
   });
 });

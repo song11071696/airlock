@@ -38,3 +38,17 @@ Repo: https://github.com/song11071696/airlock (`main` = source, `gh-pages` = bui
 3. Real Chrome + Nano test; fix what breaks.
 4. PLAN.md milestones: deadline countdown, inline review highlight, mobile layout, more letter types, redaction eval (precision/recall).
 5. Demo video (captions only) + Devpost write-up by Nov 27; submit Nov 28 (deadline Nov 30 14:00 PT = Dec 1 06:00 CST).
+
+## Real-device test 2026-11-09 14:35 (user's MacBook Air M5, Chrome)
+- Gemini Nano downloaded and "ready" on device. Redaction ran: 14 withheld (rules + Nano), leak check passed, 898 bytes outbound.
+- Nano added: POSTCODE "Oakridge, CA 94110", ACCOUNT "Tenant Account No: 88-1234-77", DOB "November 6".
+- ISSUE: "November 6" tagged DOB by Nano is likely a notice/deadline date, not a birth date. Redacting dates can break deadline extraction. Fix: don't let Nano withhold plain dates unless context says birth/DOB; label-bleed (whole "Tenant Account No:" line) should trim to the value.
+- 14:36 Explain on user's Mac: CLOUD WORKED (gemini-3.5-flash-lite, after App Check set to monitor-only). Full hybrid flow verified on real device: Nano + rules redaction → cloud on 898 bytes → local fill-back.
+- ISSUE: draft reply says "Please contact me at (415) 555-0198 or via email at d.okafor@..." — those are the LANDLORD's details; tenant reply uses sender's contact as own. Need role-aware tokens (SENDER_* vs RECIPIENT_*) or prompt rule.
+- ISSUE: "the account Tenant Account No: 88-1234-77" label bleed in draft (from Nano span).
+
+### Fixes for the 2026-11-09 real-device issues
+- Nano date false positive: `postFilterModelEntities()` drops date-only spans (any type) and DOB spans unless birth/DOB wording sits on the same line just before them. Service/deadline dates now reach the analyst. Redactor prompt also told not to tag ordinary dates.
+- Label bleed: Nano spans are trimmed to the value (`trimLabel()`), and spans already covered by a rules entity are dropped, so "Tenant Account No: 88-1234-77" becomes one `[[RECIPIENT_ACCOUNT_1]]` token with the label left visible.
+- Role confusion: tokens are role-aware (`assignRoles()`, local, from letter layout: To/Dear/labelled names and the recipient address block → RECIPIENT_*, signature block and "call/reach us/deliver to/write to" contact wording → SENDER_*; identifiers default to recipient). Analyst/helper prompts explain the roles and forbid presenting SENDER_* contact as the user's own; `guardReplyDraft()` deterministically replaces sender/unknown phone/email/address in "contact me / my phone" sentences with [your phone]/[your email]/[your address] and a sender name under the sign-off with [your name].
+- Local scan after a cloud refusal no longer says "connect to the internet".

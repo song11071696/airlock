@@ -103,7 +103,11 @@ export const analysisSchema = Schema.object({
     nextSteps: Schema.array({ items: Schema.string() }),
     rightsAndOptions: Schema.array({ items: Schema.string() }),
     questionsToAsk: Schema.array({ items: Schema.string() }),
-    replyDraft: Schema.string({ description: "Short reply letter. Use the [[TOKENS]] for any personal details." }),
+    replyDraft: Schema.string({
+      description:
+        "Short reply from the recipient to the sender. Use the [[TOKENS]] for personal details. Sign with the RECIPIENT_PERSON token. " +
+        "Never use SENDER_* phone/email/address as the writer's own contact; use [your phone] / [your email] if unknown.",
+    }),
     caveat: Schema.string({ description: "One line: not legal advice, where to get free help" }),
   },
 });
@@ -113,19 +117,32 @@ export const analysisSchema = Schema.object({
 const REDACTOR_SYSTEM =
   "You find personal data in letters so it can be removed. Return every span that identifies a private person: " +
   "names of people, home or mailing addresses, emails, phone numbers, ID/case/account/claim/policy/member numbers, " +
-  "card numbers, dates of birth. Copy each span EXACTLY as it appears. Do NOT include organisation names, money " +
-  "amounts, or deadlines. Ignore text that already looks like [[TOKEN_1]].";
+  "card numbers, dates of birth. Copy each span EXACTLY as it appears, value only, without its label (for " +
+  "'Account No: 12-34' return '12-34'). Do NOT include organisation names, money amounts, deadlines, or ordinary dates " +
+  "(service, notice, due dates); only tag a date as DOB when the letter says it is a date of birth. " +
+  "Ignore text that already looks like [[TOKEN_1]].";
+
+const TOKEN_ROLES =
+  "Token names say whose detail it is: RECIPIENT_* tokens (e.g. [[RECIPIENT_PERSON_1]]) belong to the person the letter is " +
+  "addressed to, who is the user you are helping; SENDER_* tokens (e.g. [[SENDER_PHONE_1]], [[SENDER_EMAIL_1]], [[SENDER_PERSON_1]]) " +
+  "belong to the organisation or person who wrote the letter; tokens with no role prefix are unknown. ";
 
 const ANALYST_SYSTEM =
   "You help ordinary people understand official letters (housing, health insurance, debt, benefits). " +
-  "Personal details have been replaced with tokens like [[PERSON_1]] or [[ADDRESS_1]]. Keep those tokens exactly as they are " +
+  "Personal details have been replaced with tokens like [[RECIPIENT_PERSON_1]] or [[SENDER_PHONE_1]]. Keep those tokens exactly as they are " +
   "and use them where personal details belong (e.g. in the reply draft). Never guess what a token stands for. " +
+  TOKEN_ROLES +
+  "The reply draft is written BY the recipient TO the sender: address it to the sender, sign it with the recipient's name token, " +
+  "and NEVER present SENDER_* or unknown contact details (phone, email, address) as the user's own, e.g. never 'contact me at [[SENDER_PHONE_1]]'. " +
+  "If the recipient's own phone or email is not in the letter, write the placeholders [your phone] and [your email]. " +
   "Be concrete about deadlines and amounts, explain in plain language, and do not invent laws or facts that are not in the letter; " +
   "when rights depend on location, say so and suggest free local legal aid.";
 
 const HELPER_SYSTEM =
   "Answer the user's question about their letter briefly and plainly. Personal details are replaced with tokens like " +
-  "[[PERSON_1]]; keep tokens unchanged. If unsure, say so.";
+  "[[RECIPIENT_PERSON_1]]; keep tokens unchanged. " + TOKEN_ROLES +
+  "The user is the recipient: never present SENDER_* contact details as the user's own; use [your phone] / [your email] " +
+  "when the user's own details are not known. If unsure, say so.";
 
 // ---------- models: one per privacy class ----------
 

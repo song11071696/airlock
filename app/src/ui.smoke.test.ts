@@ -38,7 +38,8 @@ describe("Airlock UI (no model, no cloud)", () => {
     expect(document.getElementById("step-review")!.hidden).toBe(false);
     const outbound = document.getElementById("outbound")!.textContent!;
     expect(outbound).not.toContain("Maria Elena Lopez");
-    expect(outbound).toContain("[[PERSON_1]]");
+    expect(outbound).toContain("[[RECIPIENT_PERSON_1]]");
+    expect(outbound).toContain("[[SENDER_PHONE_1]]");
     expect(document.getElementById("leak")!.textContent).toContain("Leak check passed");
     expect(document.getElementById("route")!.textContent).toContain("LOCAL RULES");
 

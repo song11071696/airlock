@@ -6,7 +6,7 @@ const WORD_NUM: Record<string, number> = {
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, ten: 10, fourteen: 14, fifteen: 15, thirty: 30, sixty: 60, ninety: 90,
 };
 
-export function rulesOnlyAnalysis(text: string): Analysis {
+export function rulesOnlyAnalysis(text: string, opts: { cloudRefused?: boolean } = {}): Analysis {
   const deadlines: { what: string; when: string }[] = [];
   const re = /\b(?:within|in)\s+((?:\w+\s+)?\(?\d+\)?|\w+)[\s-]+(calendar\s+|business\s+)?days?\b[^.]*\./gi;
   let m: RegExpExecArray | null;
@@ -20,9 +20,11 @@ export function rulesOnlyAnalysis(text: string): Analysis {
   return {
     letterType: first.slice(0, 80),
     urgency: deadlines.some((d) => parseInt(d.when) <= 7) ? "high" : deadlines.length ? "medium" : "low",
-    plainSummary:
-      "No AI model is available right now, so this is a basic scan: the deadlines and amounts below were found by simple text rules. " +
-      "Enable Gemini Nano or connect to the internet for a full explanation.",
+    plainSummary: opts.cloudRefused
+      ? "The cloud AI declined this request and Gemini Nano is not ready on this device, so this is a basic scan: the deadlines and amounts below were found by simple text rules. " +
+        "Turn on Gemini Nano in Chrome for a full explanation that never leaves this device."
+      : "No AI model is available right now, so this is a basic scan: the deadlines and amounts below were found by simple text rules. " +
+        "Enable Gemini Nano or connect to the internet for a full explanation.",
     deadlines,
     amounts,
     nextSteps: deadlines.length ? ["Note the earliest deadline above in your calendar today."] : [],

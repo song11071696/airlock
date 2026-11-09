@@ -19,12 +19,17 @@ export const ENTITY_TYPES: EntityType[] = [
 
 export type Finder = "rules" | "on_device" | "user";
 
+/** Whose detail this is: the organisation/person who WROTE the letter, or the person it is addressed TO (the user). */
+export type Role = "sender" | "recipient";
+
 export interface Entity {
   text: string;
   type: EntityType;
   by: Finder;
   /** set when this entity was derived from another one (e.g. a surname from a full name) */
   parent?: string;
+  /** set by assignRoles(); becomes part of the token name ([[SENDER_PHONE_1]], [[RECIPIENT_PERSON_1]]) */
+  role?: Role;
 }
 
 /** Text that has passed through the airlock. Only this type may be sent to a cloud-capable model. */
@@ -35,7 +40,8 @@ export interface Vault {
   byToken: Map<string, string>;
   /** original value (normalised) -> token */
   byValue: Map<string, string>;
-  counters: Partial<Record<EntityType, number>>;
+  /** per token kind, e.g. "PHONE", "SENDER_PHONE", "RECIPIENT_PERSON" */
+  counters: Record<string, number>;
 }
 
 export function newVault(): Vault {
@@ -184,9 +190,10 @@ function tokenFor(vault: Vault, e: Entity): string {
   const key = e.text.toLowerCase();
   const existing = vault.byValue.get(key);
   if (existing) return existing;
-  const n = (vault.counters[e.type] ?? 0) + 1;
-  vault.counters[e.type] = n;
-  const token = `[[${e.type}_${n}]]`;
+  const kind = (e.role ? e.role.toUpperCase() + "_" : "") + e.type;
+  const n = (vault.counters[kind] ?? 0) + 1;
+  vault.counters[kind] = n;
+  const token = `[[${kind}_${n}]]`;
   vault.byValue.set(key, token);
   vault.byToken.set(token, e.text);
   return token;
@@ -266,5 +273,184 @@ export function sanitizeModelEntities(raw: unknown, sourceText: string): Entity[
       out.push({ text, type, by: "on_device" });
     }
   }
+  return out;
+}
+
+// ---------- on-device (Gemini Nano) span post-filter ----------
+
+const MONTHS = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+/** A span that is nothing but a calendar date ("November 6", "6 Nov 2026", "04/12/1986", "2026-11-06"). */
+const DATE_ONLY_RE = new RegExp(
+  `^(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day,?\\s+)?(?:(?:${MONTHS})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{2,4})?` +
+    `|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:${MONTHS})\\.?(?:,?\\s+\\d{2,4})?` +
+    `|\\d{1,2}[/.-]\\d{1,2}[/.-]\\d{2,4}|\\d{4}-\\d{1,2}-\\d{1,2}|(?:${MONTHS})\\.?\\s+\\d{4})$`,
+  "i",
+);
+const BIRTH_CTX_RE = /\b(?:birth|birthday|born|DOB|D\.O\.B)\b|\bdate\s+of\s+b/i;
+
+export function isDateOnly(s: string): boolean {
+  return DATE_ONLY_RE.test(s.trim());
+}
+
+function occurrences(text: string, needle: string): number[] {
+  const out: number[] = [];
+  if (!needle) return out;
+  const h = text.toLowerCase();
+  const n = needle.toLowerCase();
+  for (let i = h.indexOf(n); i !== -1; i = h.indexOf(n, i + 1)) out.push(i);
+  return out;
+}
+
+/** True when some occurrence of `span` sits right after birth/DOB wording on the same line. */
+export function hasBirthContext(text: string, span: string): boolean {
+  if (BIRTH_CTX_RE.test(span)) return true;
+  return occurrences(text, span).some((i) => {
+    const lineStart = text.lastIndexOf("\n", i - 1) + 1;
+    const before = text.slice(Math.max(lineStart, i - 48), i);
+    return BIRTH_CTX_RE.test(before);
+  });
+}
+
+const ID_LABEL_RE =
+  /^(?:(?:account|acct|case|claim|policy|member|reference|ref|file|docket|loan|invoice|patient|tenant|customer|receipt)\.?\s*){1,3}(?:no\.?|number|num|id)?\s*(?=[A-Z0-9]*\d)/i;
+
+/**
+ * Strip a field label the model copied along with the value:
+ * "Tenant Account No: 88-1234-77" -> "88-1234-77", "Tenant: John Smith" -> "John Smith".
+ */
+export function trimLabel(span: string): string {
+  const s = span.trim();
+  const m = /^([A-Za-z][A-Za-z .'’/&()-]{0,40}?)\s*(?:#\s*:?|:)\s*(\S[\s\S]*)$/.exec(s);
+  if (m && !/\d/.test(m[1])) return m[2].trim();
+  const m2 = ID_LABEL_RE.exec(s);
+  if (m2 && m2[0].length < s.length) return s.slice(m2[0].length).trim();
+  return s;
+}
+
+/**
+ * Clean Gemini Nano's spans before they are withheld:
+ *  - trim copied labels so the token covers only the value (and lines up with the rules span);
+ *  - drop plain dates unless the letter says it is a birth date: deadlines and service dates must reach the analyst;
+ *  - drop spans a rules entity already covers, so one value gets one token.
+ */
+export function postFilterModelEntities(model: Entity[], rules: Entity[], source: string): Entity[] {
+  const out: Entity[] = [];
+  for (const e of model) {
+    let text = trimLabel(e.text).replace(/[.,;:]+$/, "").trim();
+    let type = e.type;
+    if (text.length < 2) continue;
+    if (type === "DOB" || isDateOnly(text)) {
+      if (!hasBirthContext(source, text)) continue;
+      type = "DOB";
+    }
+    const lower = text.toLowerCase();
+    if (rules.some((r) => r.text.toLowerCase().includes(lower))) continue;
+    out.push({ ...e, text, type });
+  }
+  return out;
+}
+
+// ---------- sender / recipient roles ----------
+
+const RECIPIENT_NAME_RE =
+  /\b(?:(?:Dear|To|Attn)\.?[:,]?|(?:Tenants?|Patient|Member|Insured|Debtor|Applicant|Beneficiary|Name|Resident|Client)[ \t]*:)[ \t]+(?:(?:Mr|Mrs|Ms|Mx|Dr)\.?[ \t]+)?((?:[A-Z][a-z'’-]+|[A-Z]\.)(?:[ \t]+(?:[A-Z][a-z'’-]+|[A-Z]\.)){0,3})/g;
+const SIGN_OFF_RE =
+  /\b(?:Signed|Sincerely|Regards|Best regards|Kind regards|Respectfully|Yours truly|Yours faithfully|Yours sincerely)[ \t]*,?[ \t]*(?=\n)/gi;
+/** Wording that introduces the WRITER's own contact details. */
+const SENDER_CTX_RE =
+  /\b(?:call(?:ing)?|phone us|contact (?:us|our)|reach (?:us|our)|write (?:to )?us|write to|email us|us at|our (?:office|address|team)|deliver(?:ed)? to|mail (?:\w+ )?to|send (?:\w+ )?to|remit|member services|customer service|visit us|office hours)\b/i;
+
+interface Span { start: number; end: number }
+
+function lineBlock(text: string, at: number): Span {
+  const start = text.lastIndexOf("\n", at - 1) + 1;
+  const blank = text.indexOf("\n\n", at);
+  return { start, end: blank === -1 ? text.length : blank };
+}
+
+/**
+ * Decide whose detail each entity is, without any model: the recipient (the user the letter is addressed to)
+ * or the sender (who wrote it). Unknown stays unset. Existing roles are kept.
+ */
+export function assignRoles(text: string, entities: Entity[]): Entity[] {
+  const recipientNames = new Set<string>();
+  RECIPIENT_NAME_RE.lastIndex = 0;
+  for (let m; (m = RECIPIENT_NAME_RE.exec(text)); ) {
+    if (!STOP_NAMES.has(m[1].split(/\s+/)[0])) recipientNames.add(m[1].toLowerCase());
+  }
+  const recipientBlocks: Span[] = [];
+  const senderBlocks: Span[] = [];
+  // address block that starts on a line naming the recipient ("To: Maria Lopez" / a bare "Priya Natarajan" line)
+  for (const name of recipientNames) {
+    for (const i of occurrences(text, name)) {
+      const ls = text.lastIndexOf("\n", i - 1) + 1;
+      const le = text.indexOf("\n", i);
+      const line = text.slice(ls, le === -1 ? text.length : le).trim();
+      if (/^(?:To|Attn)\b/i.test(line) || line.toLowerCase() === name) recipientBlocks.push(lineBlock(text, i));
+    }
+  }
+  SIGN_OFF_RE.lastIndex = 0;
+  for (let m; (m = SIGN_OFF_RE.exec(text)); ) senderBlocks.push(lineBlock(text, m.index));
+  const senderNames = new Set<string>();
+  for (const b of senderBlocks) {
+    const nameLine = text.slice(b.start, b.end).split("\n")[1]?.trim();
+    if (nameLine) senderNames.add(nameLine.toLowerCase());
+  }
+
+  const inAny = (blocks: Span[], i: number) => blocks.some((b) => i >= b.start && i < b.end);
+  const nameRole = (n: string): Role | undefined => {
+    const k = n.toLowerCase();
+    if ([...recipientNames].some((r) => r === k || r.split(/\s+/).includes(k) && k.length > 2)) return "recipient";
+    if ([...senderNames].some((s) => s === k || s.split(/\s+/).includes(k) && k.length > 2)) return "sender";
+    return undefined;
+  };
+
+  const decide = (e: Entity): Role | undefined => {
+    if (e.role) return e.role;
+    if (e.type === "PERSON") {
+      const r = nameRole(e.parent ?? e.text);
+      if (r) return r;
+    }
+    for (const i of occurrences(text, e.text)) {
+      if (inAny(recipientBlocks, i)) return "recipient";
+      if (inAny(senderBlocks, i)) return "sender";
+      const lineStart = text.lastIndexOf("\n", i - 1) + 1;
+      let before = text.slice(Math.max(lineStart, i - 200), i);
+      const cut = Math.max(before.lastIndexOf(". "), before.lastIndexOf("? "));
+      if (cut !== -1) before = before.slice(cut + 2);
+      if (SENDER_CTX_RE.test(before)) return "sender";
+    }
+    // the user's own identifiers: account / case / member numbers, their card, their birth date
+    if (e.type === "ACCOUNT" || e.type === "ID_NUMBER" || e.type === "CARD" || e.type === "DOB") return "recipient";
+    return undefined;
+  };
+  return entities.map((e) => {
+    const role = decide(e);
+    return role ? { ...e, role } : { ...e };
+  });
+}
+
+// ---------- reply-draft guard ----------
+
+const OWN_CONTACT_RE =
+  /\b(?:contact me|reach me|call me|text me|phone me|email me|e-mail me|write to me|reply to me|get in touch with me|I can be reached|I am reachable|my (?:phone|telephone|number|cell|mobile|email|e-mail|address|contact))\b/i;
+const NOT_MINE_CONTACT_RE = /\[\[(?!RECIPIENT_)(?:SENDER_)?(PHONE|EMAIL|ADDRESS|POSTCODE)_\d+\]\]/g;
+const PLACEHOLDER: Record<string, string> = { PHONE: "[your phone]", EMAIL: "[your email]", ADDRESS: "[your address]", POSTCODE: "[your address]" };
+
+/**
+ * Deterministic safety net on the model's reply draft (run on the TOKENISED text, before re-filling):
+ * the reply is written by the recipient, so a sender's (or unknown) phone/email/address offered as "contact me at"
+ * becomes a placeholder, and the writer's name under the sign-off becomes [your name].
+ */
+export function guardReplyDraft(draft: string): string {
+  if (!draft) return draft;
+  const sentences = draft.split(/(?<=[.!?\n])/);
+  let out = sentences
+    .map((s) => (OWN_CONTACT_RE.test(s) ? s.replace(NOT_MINE_CONTACT_RE, (_t, k: string) => PLACEHOLDER[k]) : s))
+    .join("");
+  out = out.replace(
+    /(\b(?:Sincerely|Regards|Best regards|Kind regards|Respectfully|Yours truly|Yours faithfully|Yours sincerely|Thank you|Thanks)[ \t]*,?[ \t]*\n[ \t]*)\[\[SENDER_PERSON_\d+\]\]/gi,
+    "$1[your name]",
+  );
   return out;
 }

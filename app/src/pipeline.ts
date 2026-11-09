@@ -2,7 +2,7 @@
 import { analyse, ask, CloudRefusedError, findEntitiesOnDevice, getCloudProblem, type Analysis, type Source } from "./ai";
 import { rulesOnlyAnalysis } from "./fallback";
 import {
-  chunk, expandNames, findByRules, leakCheck, mergeEntities, newVault, redact, rehydrate, sanitizeModelEntities,
+  assignRoles, chunk, expandNames, guardReplyDraft, postFilterModelEntities, findByRules, leakCheck, mergeEntities, newVault, redact, rehydrate, sanitizeModelEntities,
   type Entity, type Redacted, type Vault,
 } from "./pii";
 
@@ -38,7 +38,10 @@ export async function discover(raw: string, useDevice: boolean, log: StepLog[]):
         ms += r.ms;
         modelEnts = modelEnts.concat(sanitizeModelEntities(r.value, part));
       }
-      log.push({ label: "Find personal details (Gemini Nano)", source: "on_device", ms, detail: `${modelEnts.length} found` });
+      const before = modelEnts.length;
+      modelEnts = postFilterModelEntities(modelEnts, rules, raw);
+      const dropped = before - modelEnts.length;
+      log.push({ label: "Find personal details (Gemini Nano)", source: "on_device", ms, detail: `${modelEnts.length} found` + (dropped ? ` (${dropped} dropped: plain dates / already covered)` : "") });
     } catch (e) {
       log.push({ label: "Find personal details (Gemini Nano)", source: "error", ms: 0, detail: errMsg(e) + " — continuing with rules only; nothing was sent anywhere" });
     }
@@ -48,7 +51,9 @@ export async function discover(raw: string, useDevice: boolean, log: StepLog[]):
   return expandNames(mergeEntities(rules, modelEnts));
 }
 
-export function build(raw: string, entities: Entity[], released: Set<string>, log: StepLog[]): Prepared {
+export function build(raw: string, entities0: Entity[], released: Set<string>, log: StepLog[]): Prepared {
+  // Role-aware tokens: [[SENDER_PHONE_1]] vs [[RECIPIENT_PERSON_1]]. Roles are decided locally from letter layout.
+  const entities = assignRoles(raw, entities0);
   const isReleased = (e: Entity) => released.has(e.text.toLowerCase()) || (!!e.parent && released.has(e.parent.toLowerCase()));
   const active = entities.filter((e) => !isReleased(e));
   const vault = newVault();
@@ -78,6 +83,7 @@ export async function runAnalysis(p: Prepared, modelAvailable: boolean, log: Ste
   try {
     const r = await analyse(p.redacted);
     tokenised = r.value;
+    if (typeof tokenised?.replyDraft === "string") tokenised = { ...tokenised, replyDraft: guardReplyDraft(tokenised.replyDraft) };
     source = r.source;
     ms = r.ms;
     log.push({ label: "Analyse redacted letter", source, ms, detail: source === "in_cloud" ? `${bytesSent} bytes sent, 0 personal details` : "nothing left this device" });
@@ -88,7 +94,7 @@ export async function runAnalysis(p: Prepared, modelAvailable: boolean, log: Ste
     else if (modelAvailable) log.push({ label: "Analyse redacted letter", source: "error", ms: 0, detail: errMsg(e) });
     else log.push({ label: "Analyse redacted letter", source: "skipped", ms: 0, detail: "no model available" });
     const t0 = performance.now();
-    tokenised = rulesOnlyAnalysis(p.redacted);
+    tokenised = rulesOnlyAnalysis(p.redacted, { cloudRefused: !!cloudNotice });
     source = "local_rules";
     ms = Math.round(performance.now() - t0);
     log.push({ label: "Basic scan (fallback)", source, ms, detail: "deadlines and amounts by text rules" });
@@ -117,7 +123,7 @@ export async function followUp(p: Prepared, question: string, log: StepLog[]): P
   if (leakCheck(q, p.vault).length) throw new Error("Blocked: your question contains personal details that could not be removed.");
   const r = await ask(p.redacted, q);
   log.push({ label: "Follow-up question", source: r.source, ms: r.ms, detail: r.source === "in_cloud" ? "redacted question sent" : "answered on this device" });
-  return { text: rehydrate(r.value, p.vault), source: r.source, ms: r.ms };
+  return { text: rehydrate(guardReplyDraft(r.value), p.vault), source: r.source, ms: r.ms };
 }
 
 export function errMsg(e: unknown): string {
