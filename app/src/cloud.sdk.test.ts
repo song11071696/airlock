@@ -38,6 +38,11 @@ describe("real SDK, cloud configured, API rejects un-attested call", () => {
     expect(headers.has("X-Firebase-AppCheck")).toBe(false);
 
     expect(ai.getCloudProblem()?.kind).toBe("app_check");
+    expect(ai.getCloudProblem()?.raw).toMatch(/^\[401 \] Firebase App Check token is invalid/);
+    // follow-up with cloud refused and no Nano: plain-language refusal, no second request
+    const err2 = await ai.ask(redacted, "When?" as never).then(() => null, (e: unknown) => e);
+    expect(err2).toBeInstanceOf(ai.CloudRefusedError);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(ai.cloudReachable()).toBe(false);
     ai.resetCloudProblem();
     expect(ai.cloudReachable()).toBe(true);

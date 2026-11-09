@@ -248,7 +248,7 @@ export interface CloudProblem {
 /** Map a Firebase AI Logic / fetch error to something a user can understand. Pure; unit-tested. */
 export function classifyCloudError(e: unknown): CloudProblem {
   const raw0 = e instanceof Error ? `${e.message} ${(e as { code?: string }).code ?? ""} ${JSON.stringify((e as { customErrorData?: unknown }).customErrorData ?? "")}` : String(e);
-  const raw = raw0.replace(/\s+/g, " ").trim().slice(0, 300);
+  const raw = raw0.replace(/\s+/g, " ").replace(/^AI: Error fetching from \S+: /, "").trim().slice(0, 300);
   const t = raw.toLowerCase();
   const status = /\[(\d{3})/.exec(raw)?.[1] ?? /\b(401|403|404|429)\b/.exec(raw)?.[1];
   const tail = " Your letter stayed private: only redacted text was ever prepared to send.";
@@ -373,7 +373,11 @@ export function ask(letter: Redacted, question: Redacted): Promise<Timed<string>
   const local = !cloudReachable();
   const model = local ? helperLocal : helperHybrid;
   return timed(async () => {
-    if (local) await assertOnDevice();
+    if (local) {
+      // Cloud already refused (e.g. App Check) and no Nano: say why in plain words.
+      if (cloudProblem && (await deviceState()) !== "available") throw new CloudRefusedError(cloudProblem);
+      await assertOnDevice();
+    }
     try {
       const r = await model.generateContent(`Letter:\n"""\n${letter}\n"""\n\nQuestion: ${question}`);
       return { value: r.response.text(), source: srcOf(r.response.inferenceSource) };

@@ -64,7 +64,7 @@ Source: https://firebase.google.com/docs/ai-logic/hybrid/web/get-started , …/c
 - `src/ai.ts` Firebase init, App Check, four model instances, device-model state.
 - `src/pipeline.ts` steps ①–⑦, returns per-step `{source: on_device|in_cloud|local_rules, ms}`.
 - `src/main.ts` UI (vanilla TS, no framework), `src/samples.ts` fictional sample letters.
-- Hosting: Firebase Hosting (Spark, free) for the public demo link judges can open.
+- Hosting: GitHub Pages (`gh-pages` branch, https://song11071696.github.io/airlock/) — free; GitHub Actions is disabled on the owner account so deploys use `scripts/deploy-gh-pages.sh`.
 
 ## 5. Demo video storyboard (≈2:50, captions + screen only, no voice, no face)
 
@@ -84,7 +84,8 @@ Record with OBS/Chrome screen capture; captions burned in with ffmpeg. All sampl
 ## 6. Milestones (all dates Asia/Shanghai; hard deadline Dec 1 06:00 CST = Nov 30 14:00 PT)
 
 - **Nov 9** — Research, plan, v0 app (paste → rules redaction → cloud/on-device analysis → re-hydrate, status bar, fallbacks), tests. ✅ done (20 tests pass, build passes; see AUDIT.md).
-- **Nov 10–12** — Firebase project (Spark, Gemini Developer API), App Check debug token, first real cloud call; real Chrome + Gemini Nano test on a physical desktop; read official rules once published.
+- **Nov 9 (later)** — Firebase project `airlock-hybridai` (Spark, Gemini Developer API) + web app; config committed; App Check optional/off; deployed to GitHub Pages; live cloud call refused 401 (App Check enforced) and handled gracefully. ✅
+- **Nov 10–12** — App Check route decision (debug token for recording vs console unenforce) (Spark, Gemini Developer API), App Check debug token, first real cloud call; real Chrome + Gemini Nano test on a physical desktop; read official rules once published.
 - **Nov 13–16** — Image path (Nano transcription), Nano entity extraction tuning on 10 fictional letters, chunking, click-to-withhold review UI, deadline countdown.
 - **Nov 17–20** — Q&A, offline mode polish, accessibility pass, mobile-width layout (cloud-only on mobile with clear label), Firebase Hosting deploy + reCAPTCHA App Check.
 - **Nov 21–24** — Redaction quality eval script (precision/recall on labelled fictional set, published in README), bug bash, copy polish.
