@@ -1,0 +1,8 @@
+node_modules/
+app/node_modules/
+app/dist/
+.env
+.env.local
+app/.env
+app/.env.local
+research/*.html

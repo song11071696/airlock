@@ -1,0 +1,219 @@
+
+Experimental: Using the Firebase AI Logic SDK to build hybrid experiences is
+an Experimental feature (and the Prompt API from ML Kit is in beta),
+which means that this feature isn't subject to any SLA or deprecation policy and
+could change in backwards-incompatible ways.
+This page describes the following configuration options for hybrid experiences:
+Set an inference mode.
+Determine whether on-device or in-cloud inference was used.
+Specify a model to use.
+Use model configuration to control responses.
+Make sure that you've completed the
+getting started guide for building hybrid experiences.
+Set an inference mode
+The examples in the getting started guide use the PREFER_ON_DEVICE mode, but
+this is only one of the four available
+inference modes.
+Note: Keep the following in mind:
+      To use an on-device model, make sure to review the list of
+        not-yet-available
+          features for on-device inference
+        on the get started page.
+      To use a cloud-hosted model, the device must be online and
+      you must explicitly
+      specify
+        a cloud-hosted model to use.
+      As part of the response, the SDK tells you
+      whether
+        on-device or in-cloud inference was used.
+Here are the available inference modes:
+PREFER_ON_DEVICE: Attempt to use the on-device model if it's available
+and supports the type of request. Otherwise, log an error on the device and
+then automatically fall back to the cloud-hosted model.
+ Kotlin val config = OnDeviceConfig(mode = InferenceMode.PREFER_ON_DEVICE)
+ Java InferenceMode mode = InferenceMode.PREFER_ON_DEVICE;
+OnDeviceConfig config = new OnDeviceConfig(mode);
+ONLY_ON_DEVICE: Attempt to use the on-device model if it's available
+and supports the type of request. Otherwise, throw an exception.
+ Kotlin val config = OnDeviceConfig(mode = InferenceMode.ONLY_ON_DEVICE)
+ Java InferenceMode mode = InferenceMode.ONLY_ON_DEVICE;
+OnDeviceConfig config = new OnDeviceConfig(mode);
+PREFER_IN_CLOUD: Attempt to use the cloud-hosted model if the device is
+online and if the model is available. If the device is offline,
+fall back to the on-device model. In all other failure cases,
+throw an exception.
+ Kotlin val config = OnDeviceConfig(mode = InferenceMode.PREFER_IN_CLOUD)
+ Java InferenceMode mode = InferenceMode.PREFER_IN_CLOUD;
+OnDeviceConfig config = new OnDeviceConfig(mode);
+ONLY_IN_CLOUD: Attempt to use the cloud-hosted model if the device is
+online and if the model is available. Otherwise, throw an exception.
+ Kotlin val config = OnDeviceConfig(mode = InferenceMode.ONLY_IN_CLOUD)
+ Java InferenceMode mode = InferenceMode.ONLY_IN_CLOUD;
+OnDeviceConfig config = new OnDeviceConfig(mode);
+Determine whether on-device or in-cloud inference was used
+If your inference mode is PREFER_ON_DEVICE or PREFER_IN_CLOUD, then it might
+be helpful to know which mode was used for given requests. This information is
+provided by the inferenceSource property of each response.
+When you access this property, the returned value will be either ON_DEVICE or
+IN_CLOUD.
+ Kotlin // ...
+print("You used: ${result.response.inferenceSource}")
+print(result.response.text)
+ Java // ...
+System.out.println("You used: " + result.getResponse().getInferenceSource());
+System.out.println(result.getResponse().getText());
+Specify a model to use
+      Click your Gemini API provider to view provider-specific content
+        and code on this page.
+        Gemini Developer API
+        Agent Platform Gemini API
+You can specify a model to use when you create the generativeModel instance
+(Kotlin |
+Java).
+Specify a cloud-hosted model:
+If your inference mode is PREFER_ON_DEVICE, PREFER_IN_CLOUD, or
+ONLY_IN_CLOUD, then you must explicitly specify a cloud-hosted model
+to use. The SDK does not have a default cloud-hosted model.
+Find model names for all
+supported cloud-hosted Gemini models.
+Specify an on-device model:
+If your inference mode is PREFER_ON_DEVICE, PREFER_IN_CLOUD, or
+ONLY_ON_DEVICE, then you can optionally specify in the
+onDeviceConfig a "category" of on-device model to use. Categories are a
+combination of release stage and performance characteristics.
+Supported category values are listed below.
+AICore auto-selects the on-device model that meets the conditions of the
+specified category and is supported by the device. For example, if you
+specify PREVIEW and the device is a Pixel 9, then
+Gemini Nano 4 Full [Preview] (nano-v4-full) would likely be
+auto-selected.
+STABLE: The latest stable on-device model.
+Fully tested and on consumer devices.
+For example, Gemini Nano 3 (nano-v3) or
+Gemini Nano 2 (nano-v2).
+Default setting for the on-device model if no OnDeviceModelOption
+is specified.
+PREVIEW: The latest preview on-device model with full
+performance capabilities.
+Designed for higher reasoning power and complex tasks.
+For example, Gemini Nano 4 Full [Preview] (nano-v4-full, which
+is based on Gemma 4 E4B).
+PREVIEW_FAST: The latest preview on-device model that's fast.
+Optimized for maximum speed and lower latency.
+For example, Gemini Nano 4 Fast [Preview] (nano-v4-fast, which
+is based on Gemma 4 E2B).
+Important: To use a preview on-device model, review the prerequisites
+and enrollment instructions for the developer preview in the
+AICore Developer Preview guide.
+ Kotlin val model = Firebase.ai(backend = GenerativeBackend.googleAI())
+    .generativeModel(
+        // Specify a cloud-hosted model.
+        // Required for `PREFER_ON_DEVICE`, `PREFER_IN_CLOUD`, and `ONLY_IN_CLOUD` inference modes.
+        modelName = "CLOUD_MODEL_NAME",
+        onDeviceConfig = OnDeviceConfig(
+            mode = InferenceMode.INFERENCE_MODE,
+            // (Optional) Specify an on-device model category.
+            // AICore will auto-select an on-device model based on this category.
+            // If not specified, AICore will auto-select the default stable on-device model.
+            modelOption = OnDeviceModelOption.ON-DEVICE_MODEL_CATEGORY)
+    )
+ Java GenerativeModel ai = FirebaseAI.getInstance(GenerativeBackend.googleAI())
+    .generativeModel(
+        // Specify a cloud-hosted model.
+        // Required for `PREFER_ON_DEVICE`, `PREFER_IN_CLOUD`, and `ONLY_IN_CLOUD` inference modes.
+        "CLOUD_MODEL_NAME",
+        /* config = */ null,
+        /* safetySettings = */ null,
+        /* tools = */ null,
+        /* toolConfig = */ null,
+        /* systemInstruction = */ null,
+        /* requestOptions = */ new RequestOptions(),
+        new OnDeviceConfig(
+                /* mode = */ InferenceMode.INFERENCE_MODE,
+                /* maxOutputTokens = */ null,
+                /* temperature = */ null,
+                /* topK = */ null,
+                /* seed = */ null,
+                /* candidateCount = */ 1,
+                // (Optional) Specify an on-device model category.
+                // AICore will auto-select an on-device model based on this category.
+                // If not specified, AICore will auto-select the default stable on-device model.
+                /* modelOption = */ OnDeviceModelOption.ON-DEVICE_MODEL_CATEGORY)
+    );
+GenerativeModelFutures model = GenerativeModelFutures.from(ai);
+Use model configuration to control responses
+      Click your Gemini API provider to view provider-specific content
+        and code on this page.
+        Gemini Developer API
+        Agent Platform Gemini API
+In each request to a model, you can send along a model configuration to control
+how the model generates a response. Cloud-hosted models and on-device models are
+configured differently and offer different configuration options:
+Cloud-hosted models: Set the configuration using
+generationConfig
+(Kotlin
+|
+Java).
+Learn about
+available parameters.
+On-device models: Set the configuration using
+onDeviceConfig
+(Kotlin
+|
+Java).
+Learn about available parameters
+(Kotlin
+|
+Java).
+The configuration is maintained for the lifetime of the instance. If you want to
+use a different config, create a new GenerativeModel instance with that
+config.
+Here's an example that sets the configurations for the cloud-hosted and
+on-device models that could be used if PREFER_ON_DEVICE inference mode is
+set:
+ Kotlin // Config for cloud-hosted model
+val generationConfig = generationConfig {
+    maxOutputTokens = 200
+    stopSequences = listOf("red")
+}
+// Config for on-device model
+val onDeviceConfig = OnDeviceConfig(
+    mode = InferenceMode.PREFER_ON_DEVICE,
+    maxOutputTokens = 200
+)
+val model = Firebase.ai(backend = GenerativeBackend.googleAI())
+    .generativeModel(
+        modelName = "CLOUD_MODEL_NAME",
+        generationConfig = generationConfig,
+        onDeviceConfig = onDeviceConfig
+    )
+ Java // Config for cloud-hosted model
+GenerationConfig generationConfig = new GenerationConfig.Builder()
+    .setMaxOutputTokens(200)
+    .setStopSequences(List.of("red"))
+    .build();
+// Config for on-device model
+OnDeviceConfig onDeviceConfig = new OnDeviceConfig(
+    /* mode = */ InferenceMode.PREFER_ON_DEVICE,
+    /* maxOutputTokens = */ 200,
+    /* temperature = */ null,
+    /* topK = */ null,
+    /* seed = */ null,
+    /* candidateCount = */ 1,
+    /* modelOption = */ null
+);
+GenerativeModel ai = FirebaseAI.getInstance(GenerativeBackend.googleAI())
+    .generativeModel(
+        "CLOUD_MODEL_NAME",
+        generationConfig,
+        /* safetySettings = */ null,
+        /* tools = */ null,
+        /* toolConfig = */ null,
+        /* systemInstruction = */ null,
+        /* requestOptions = */ new RequestOptions(),
+        onDeviceConfig
+    );
+GenerativeModelFutures model = GenerativeModelFutures.from(ai);
+Give feedback
+  about your experience with Firebase AI Logic
+         

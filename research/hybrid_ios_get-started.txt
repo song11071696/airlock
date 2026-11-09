@@ -1,0 +1,313 @@
+
+Experimental: Using the Firebase AI Logic SDK to build hybrid experiences
+is an Experimental feature, which means that this feature isn't subject to
+any SLA or deprecation policy and could change in backwards-incompatible ways.
+You can build AI-powered Apple apps and features with hybrid inference using
+Firebase AI Logic. Hybrid inference enables running inference using
+on-device models (specifically Apple's Foundation Models framework) when
+available and seamlessly falling back to cloud-hosted Google models otherwise
+(and vice versa).
+This page describes how to
+get started using the client SDK,
+as well as showing
+additional configuration options and capabilities,
+like temperature.
+Note that on-device inference via Firebase AI Logic is supported for Apple
+apps using Firebase AI Logic SDK v12.13.0+ and running on
+devices with Apple Intelligence enabled.
+It's governed by the
+Acceptable use requirements for Apple's Foundation Models framework.
+Recommended use cases
+Using an on-device model for inference offers:
+Enhanced privacy
+Inference at no-cost
+Offline functionality
+Using hybrid functionality offers:
+Provide all customers with a similar app experience regardless of the
+end-user's device
+Improve availability of generative AI features, regardless of internet
+connectivity, quota limitations, or device capabilities
+Supported capabilities, APIs, and devices
+Before you implement hybrid and on-device inference using Firebase AI Logic,
+review this section to understand what's supported for Apple apps.
+Supported capabilities and features for on-device inference
+On-device inference only supports text generation, specifically the
+following text-generation capabilities:
+Generating text from text-only input
+Streaming text from text-only input
+Make sure to review the detailed list for
+not-yet-supported hybrid or on-device inference
+at the bottom of this page.
+Supported APIs and devices
+In-cloud inference uses your chosen Gemini API provider (either the
+Gemini Developer API or the Agent Platform Gemini API (formerly Vertex AI)).
+On-device inference uses Apple's Foundation Models framework, which is
+only available on
+devices with Apple Intelligence enabled.
+The on-device model is automatically downloaded when Apple Intelligence
+is enabled.
+Important: On-device models usage is governed by the
+Acceptable use requirements for Apple's Foundation Models framework.
+Get started
+Make sure that you've reviewed the section above describing supported
+capabilities, APIs, and devices.
+These get started steps describe the required general setup for any supported
+prompt request that you want to send.
+Note: For Apple apps, the on-device model is a one-time download in the OS and
+automatically happens when
+Apple Intelligence is enabled.
+An app can't trigger an on-device model download or enable Apple Intelligence
+on the device. However, if desired, you can check for on-device model
+availability and request that the end-user enable Apple Intelligence (and
+thus trigger the on-device model download).
+Step 1: Set up a Firebase project and connect your app to Firebase
+Sign into the Firebase console,
+and then select your Firebase project.
+  Don't already have a Firebase project?
+If you don't already have a Firebase project, click the button to create a
+new Firebase project, and then use either of the following options:
+Option 1: Create a wholly new Firebase project (and its underlying
+Google Cloud project automatically) by entering a new project name in the
+first step of the workflow.
+Option 2: "Add Firebase" to an existing Google Cloud project by
+clicking Add Firebase to Google Cloud project (at bottom of page).
+In the first step of the workflow, start entering the project name of
+the existing project, and then select the project from the displayed list.
+Complete the remaining steps of the on-screen workflow to create a Firebase
+project. Note that when prompted, you do not need to set up
+Google Analytics to use the Firebase AI Logic SDKs.
+In the Firebase console, go to AI Services >
+AI Logic.
+Click Get started to launch a guided workflow that helps you set up the
+required APIs
+and resources for your project.
+If prompted, follow the on-screen instructions to register your app and add
+your Firebase configuration to your app.
+When asked to choose a "Gemini API provider", we recommend selecting the
+Gemini Developer API, which lets you get started quickly at no cost.
+At any point later, you can always
+set up the Agent Platform Gemini API (formerly Vertex AI)
+(and its requirement for billing).
+Continue in the workflow to set up the required APIs and associated services
+for Firebase AI Logic.
+This stage of the workflow automatically
+enforces Firebase App Check for AI Logic,
+which is a critical service to help protect the Gemini API when it's
+directly accessed from your app. As part of getting started (see steps later
+in this guide), you'll need to configure the App Check debug provider
+for local development when App Check is enforced.
+Note: To release your app's AI feature to end users, you need to
+register your app with a production App Check attestation provider
+so that they can use the feature when App Check is enforced.
+Continue to the next step in this guide to add the required SDKs to your
+app.
+Step 2: Add the required SDKs
+Use Swift Package Manager (SPM) to install and manage Xcode dependencies. Hybrid
+support is only available when using SPM.
+The Firebase AI Logic library provides access to the APIs for interacting
+with generative models. The library is included as part of the Firebase SDK
+for Apple platforms (firebase-ios-sdk).
+If you're already using Firebase, then make sure your Firebase package is
+v12.13.0 or later.
+In Xcode, with your app project open, navigate to
+File > Add Package Dependencies.
+When prompted, add the Firebase Apple platforms SDK repository:
+https://github.com/firebase/firebase-ios-sdk
+Select the latest SDK version.
+Select the FirebaseAILogic and FirebaseAppCheck libraries.
+When finished, Xcode will automatically begin resolving and downloading your
+dependencies in the background.
+Step 3: Configure the App Check debug provider for local development
+As part of the guided setup workflow for AI Logic in the console,
+Firebase App Check is automatically enforced to protect the Gemini API.
+For local development, you need to configure the
+App Check debug provider to bypass attestation while still maintaining the
+enforcement of App Check.
+Important: Make sure that App Check is enforced for AI Logic.
+In the Firebase console, go to the Security > App Check >
+APIs tab,
+and then find the row for Firebase AI Logic. If it says Unenforced, then
+follow the
+instructions to enforce App Check yourself.
+Here's how to use the debug provider while running your app in a simulator
+interactively (for example, during local development):
+In your Xcode project, import FirebaseAppCheck and initialize
+App Check with the debug provider factory before you configure
+Firebase.
+import SwiftUI
+import FirebaseCore
+import FirebaseAppCheck
+@main
+struct YourApp: App {
+  init() {
+    let providerFactory = AppCheckDebugProviderFactory()
+    AppCheck.setAppCheckProviderFactory(providerFactory)
+    FirebaseApp.configure()
+  }
+  var body: some Scene {
+    WindowGroup {
+      NavigationView {
+        ContentView()
+      }
+    }
+  }
+}
+Obtain your debug token:
+Launch your app in the simulator or on your test device.
+Open the Xcode console and look for the App Check debug token.
+For example:
+<Warning> [AppCheckCore][I-GAC004001] App Check debug token: '123a4567-b89c-12d3-e456-789012345678'.
+Copy the token (for example, 123a4567-b89c-12d3-e456-789012345678).
+Register your debug token with App Check:
+In the Firebase console, go to the
+Security > App Check >
+Apps tab.
+Find your app, click the overflow menu
+(more_vert), and then select
+Manage debug tokens.
+Follow the on-screen instructions to register your debug token.
+For details about the debug provider (including how to get a new debug token),
+check out the
+official App Check docs.
+Here are some critical points about the
+  App Check debug provider:
+      Keep your debug token and debug build private. Don't
+      commit your debug token to a public repository, and don't ship your debug
+      token or debug build in production builds of your app.
+      Register your app with a production attestation provider before
+      releasing to end users.
+      You'll need to
+      register your app with a production App Check attestation provider
+      (for example, Play Integrity)
+      so that your end-users can use your feature with App Check enforced.
+Step 4: Initialize the service and create a model session instance
+      Click your Gemini API provider to view provider-specific content
+        and code on this page.
+        Gemini Developer API
+        Agent Platform Gemini API
+Set up the following before you send a prompt request to the model.
+Initialize the service for your chosen Gemini API provider.
+Create a GenerativeModelSession instance with a HybridModel.
+Set the primary and secondary models based on your preferences. You can
+set the order of attempted inference:
+Attempt on-device inference first, but allow fallback to cloud: set
+primary to a "system" model and secondary to a cloud model.
+Attempt in-cloud inference first, but allow fallback to on-device:
+set primary to a cloud model and secondary to a "system" model.
+Note that the SDK supports setting only a single model which means the
+SDK will only attempt either on-device or in-cloud inference. However, for
+a hybrid experience, you need to create a HybridModel and set both
+primary and secondary models.
+Learn more about the behaviour of "inference modes" (the order of attempted
+inference) in
+Configuration options.
+The following example shows how to attempt on-device inference first, but allow
+fall back to the cloud-hosted model:
+// Initialize the Gemini Developer API backend service.
+let ai = FirebaseAI.firebaseAI(backend: .googleAI())
+// Initialize a cloud model that supports your use case.
+let cloudModel = ai.geminiModel(name: "GEMINI_MODEL_NAME")
+// Initialize an on-device model that supports your use case.
+let systemModel = FirebaseAI.SystemLanguageModel.default
+// Create a Hybrid Model.
+// Provide your preferred model as `primary` and your fallback model as `secondary`.
+// In this example, attempt to use on-device model; otherwise, fall back to cloud.
+let hybridModel = HybridModel(
+  primary: systemModel,
+  secondary: cloudModel
+)
+// Create a GenerativeModelSession with the HybridModel created earlier.
+let session = firebaseAI.generativeModelSession(
+  model: hybridModel,
+)
+Note: Keep the following in mind:
+      To use an on-device model, make sure to review the list of
+      not-yet-supported features at
+      the bottom of this page.
+      To use a cloud-hosted model, the device must be online and you must set
+      either the `primary` or `secondary` model to a cloud model.
+      As part of the response, the SDK tells you
+      whether
+      on-device or in-cloud inference was used.
+Step 5: Send a prompt request to a model
+This section shows you how to do the following:
+Generate text from text-only input
+Stream text from text-only input
+Important: Make sure to review the
+list of not-yet-supported features and limitations for on-device inference.
+For many of these, the SDK will automatically fall back to the cloud-hosted
+model (if you've set the secondary model to be a cloud-hosted model).
+Generate text from text-only input
+      Before trying this sample, make sure that you've completed the
+      Get started section of this guide.
+To generate text from a prompt that contains text, use respond(to:) like so:
+// Imports + initialization of Gemini API backend service + creation of model session
+// Provide a prompt that contains text
+let prompt = "Write a story about a magic backpack."
+// To generate text output, call `respond(to:)` with the text input
+let response = try await session.respond(to: prompt)
+print(response.content)
+Note: A GenerativeModelSession maintains chat history between requests. For
+single-turn workflows, create a new session for each request.
+Stream text from text-only input
+      Before trying this sample, make sure that you've completed the
+      Get started section of this guide.
+You can achieve faster interactions by not waiting for the entire result from
+the model generation, and instead use streaming to handle partial results. To
+stream generated text from a prompt that contains text, use
+streamResponse(to:) like so:
+// Imports + initialization of Gemini API backend service + creation of model session
+// Provide a prompt that contains text
+let prompt = "Write a story about a magic backpack."
+// To stream generated text output, call `streamResponse(to:)` with the text input
+let stream = session.streamResponse(to: prompt)
+for try await snapshot in stream {
+  print(snapshot.content)
+}
+Note: A GenerativeModelSession maintains chat history between requests. For
+single-turn workflows, create a new session for each request.
+What else can you do?
+You can use various additional configuration options and capabilities for your
+hybrid experiences:
+Set an "inference mode".
+Check if the on-device model is available.
+Determine whether on-device or in-cloud inference was used.
+Use model configuration to control responses (like temperature).
+Note: Function calling and generating structured output are supported for
+on-device inference. Documentation for implementing those experiences is
+coming soon!
+Features not-yet-supported for hybrid or on-device inference
+As an experimental release, not all the capabilities of Firebase AI Logic
+or cloud-hosted models are supported.
+The following are not supported for hybrid or on-device
+implementations: the Gemini Live API and server prompt templates. Also,
+count tokens shouldn't be relied upon because the count will differ between
+cloud-hosted and on-device models, so there's no intuitive fall back.
+The following features are not yet supported for on-device inference.
+If you want to use any of these features, then we recommend using only a
+cloud-hosted model for a more consistent experience.
+Generating text from multimodal inputs, like images, audio, video, and
+documents (PDFs)
+Generating media, like images, audio, or video
+Sending requests that exceed 4096 tokens (or approximately 3000 English
+words).
+Providing the on-device model with built-in tools to help it generate
+its response (like code execution, URL context, and Grounding with
+Google Search)
+Note: Function calling and generating structured output are supported for
+on-device inference. Documentation for implementing those experiences is
+coming soon!
+AI monitoring in the Firebase console does not show any data for
+on-device inference (including on-device logs). However, any inference that
+uses a cloud-hosted model can be monitored just like other inference via
+Firebase AI Logic.
+Additional limitations
+In addition to the above, on-device inference has the following
+limitations:
+The end-user of your app must be using a
+device with Apple Intelligence enabled.
+Your app can run on-device inference only when your app is in the
+foreground.
+Give feedback
+  about your experience with Firebase AI Logic
+         

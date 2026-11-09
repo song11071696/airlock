@@ -1,0 +1,360 @@
+
+Gemini models return responses as unstructured text by default.
+However, some use cases require structured text (like JSON or enums). For
+example, you might be using the response for other downstream tasks that require
+an established data schema.
+To ensure that the model's generated output always adheres to a specific schema,
+you can define a schema, which works like a blueprint for model responses. You
+can then directly extract data from the model's output with less
+post-processing.
+Here are some example use cases:
+Ensure that a model's response produces valid JSON and conforms to your
+provided schema.
+For example, the model can generate structured entries for recipes that always
+include the recipe name, list of ingredients, and steps. You can then more
+easily parse and display this information in the UI of your app.
+Constrain how a model can respond during classification tasks.
+For example, you can have the model annotate text with a specific set of
+labels (for instance, a specific set of enums like positive and negative),
+rather than labels that the model produces (which could have a degree of
+variability like good, positive, negative, or bad).
+This page describes how to generate structured output (like JSON and enums)
+in your hybrid experiences for web apps.
+arrow_downward Jump to JSON output 
+arrow_downward Jump to enum output 
+Configuration for structured output
+Generating structured output (like JSON and enums) is supported for inference
+using both cloud-hosted and on-device models.
+Hybrid inference modes: Configure both
+inCloudParams
+and
+onDeviceParams
+so that the model responds with structured output regardless of whether
+inference runs in the cloud or on-device:
+For on-device models: Specify the responseConstraint in
+onDeviceParams using either a schema created with Schema helper methods
+or a plain JSON schema.
+For cloud-hosted models: Specify the responseMimeType
+(application/json for JSON or text/x.enum for enums) and the
+responseSchema in inCloudParams.
+Non-hybrid inference modes: Use only the applicable configuration
+described above.
+Before you begin
+      Click your Gemini API provider to view provider-specific content
+        and code on this page.
+        Gemini Developer API
+        Agent Platform Gemini API
+Make sure that you've completed the
+getting started guide for building hybrid experiences.
+arrow_downward Jump to JSON output 
+arrow_downward Jump to enum output 
+JSON output
+The following examples adapt the
+general JSON output example
+to accommodate hybrid inference (for example, PREFER_ON_DEVICE).
+In the scenario for these examples, the model generates a list of character
+profiles for a fantasy story, with structured attributes like name, age,
+species, and optional accessories.
+You can define your response schemas using either of the following
+approaches:
+Firebase Schema helper methods (recommended):
+Use helper methods (such as Schema.object() and Schema.enumString()) to
+write concise, compact schemas directly in your code without extra
+boilerplate.
+Plain JSON schema:
+Use a standard JSON Schema object if you already have existing schema
+definitions, share schemas across platforms or backend services, or import
+schemas from JSON files.
+Example 1: Using Firebase Schema helper methods
+This example uses Schema helper methods (such as Schema.object,
+Schema.array, Schema.string, and Schema.number) provided by the
+Firebase AI Logic SDK to define the object schema.
+      Before trying this sample, complete the
+      Before you begin section of this guide
+      to set up your project and app.
+      In that section, you'll also click a button for your chosen
+      Gemini API provider so that you see provider-specific content
+      on this page.
+import { initializeApp } from "firebase/app";
+import {
+  getAI,
+  getGenerativeModel,
+  GoogleAIBackend,
+  InferenceMode,
+  Schema
+} from "firebase/ai";
+// TODO(developer): Replace the following with your app's Firebase configuration.
+// See: https://firebase.google.com/docs/web/learn-more#config-object
+const firebaseConfig = {
+  // ...
+};
+// Initialize FirebaseApp.
+const firebaseApp = initializeApp(firebaseConfig);
+// Initialize the Gemini Developer API backend service.
+const ai = getAI(firebaseApp, { backend: new GoogleAIBackend() });
+// Define a schema using the `Schema` helper methods.
+// Optional properties are specified in optionalProperties.
+const jsonSchema = Schema.object({
+  properties: {
+    characters: Schema.array({
+      items: Schema.object({
+        properties: {
+          name: Schema.string(),
+          age: Schema.number(),
+          species: Schema.string(),
+          accessory: Schema.string()
+        },
+        optionalProperties: ["accessory"]
+      })
+    })
+  }
+});
+// Create a GenerativeModel instance configured to use a hybrid inference mode (like PREFER_ON_DEVICE).
+const model = getGenerativeModel(ai, {
+  mode: InferenceMode.INFERENCE_MODE,
+  // For cloud-hosted models, specify MIME type and response schema.
+  inCloudParams: {
+    model: "CLOUD_MODEL_NAME",
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: jsonSchema
+    }
+  },
+  // For on-device models, pass the schema as the response constraint.
+  onDeviceParams: {
+    promptOptions: {
+      responseConstraint: jsonSchema
+    }
+  }
+});
+const prompt = "Create profiles for some characters for a fantasy story.";
+// Generate the structured output.
+const result = await model.generateContent(prompt);
+// Access the generated JSON string conforming to the schema from response.text().
+console.log(result.response.text());
+// Parse the JSON string into a JavaScript object.
+console.log(JSON.parse(result.response.text()));
+Example 2: Using a plain JSON schema
+This example defines the schema using JSON only.
+      Before trying this sample, complete the
+      Before you begin section of this guide
+      to set up your project and app.
+      In that section, you'll also click a button for your chosen
+      Gemini API provider so that you see provider-specific content
+      on this page.
+import { initializeApp } from "firebase/app";
+import {
+  getAI,
+  getGenerativeModel,
+  GoogleAIBackend,
+  InferenceMode
+} from "firebase/ai";
+// TODO(developer): Replace the following with your app's Firebase configuration.
+// See: https://firebase.google.com/docs/web/learn-more#config-object
+const firebaseConfig = {
+  // ...
+};
+// Initialize FirebaseApp.
+const firebaseApp = initializeApp(firebaseConfig);
+// Initialize the Gemini Developer API backend service.
+const ai = getAI(firebaseApp, { backend: new GoogleAIBackend() });
+// Define the schema as a plain JSON object.
+// Properties are required by default unless omitted from the required array.
+const jsonSchema = {
+  type: "object",
+  properties: {
+    characters: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            nullable: false
+          },
+          age: {
+            type: "number",
+            nullable: false
+          },
+          species: {
+            type: "string",
+            nullable: false
+          },
+          accessory: {
+            type: "string",
+            nullable: true
+          }
+        },
+        nullable: false,
+        required: [
+          "name",
+          "age",
+          "species"
+        ]
+      },
+      nullable: false
+    }
+  },
+  nullable: false,
+  required: [
+    "characters"
+  ]
+};
+// Create a GenerativeModel instance configured to use a hybrid inference mode (like PREFER_ON_DEVICE).
+const model = getGenerativeModel(ai, {
+  mode: InferenceMode.INFERENCE_MODE,
+  // For cloud-hosted models, specify MIME type and response schema.
+  inCloudParams: {
+    model: "CLOUD_MODEL_NAME",
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: jsonSchema
+    }
+  },
+  // For on-device models, pass the schema as the response constraint.
+  onDeviceParams: {
+    promptOptions: {
+      responseConstraint: jsonSchema
+    }
+  }
+});
+const prompt = "Create profiles for some characters for a fantasy story.";
+// Generate the structured output.
+const result = await model.generateContent(prompt);
+// Access the generated JSON string conforming to the schema from response.text().
+console.log(result.response.text());
+// Parse the JSON string into a JavaScript object.
+console.log(JSON.parse(result.response.text()));
+Enum output
+The following examples adapt the
+general enum output example
+to accommodate hybrid inference (for example, PREFER_ON_DEVICE).
+In the scenario for these examples, the model classifies a film description by
+selecting a single genre from a predefined list of allowed options
+(drama, comedy, or documentary).
+You can define your response schemas using either of the following
+approaches:
+Firebase Schema helper methods (recommended):
+Use helper methods (such as Schema.object() and Schema.enumString()) to
+write concise, compact schemas directly in your code without extra
+boilerplate.
+Plain JSON schema:
+Use a standard JSON Schema object if you already have existing schema
+definitions, share schemas across platforms or backend services, or import
+schemas from JSON files.
+Example 1: Using Firebase Schema helper methods
+This example uses the Schema.enumString helper method provided by the
+Firebase AI Logic SDK to define allowed enum values.
+      Before trying this sample, complete the
+      Before you begin section of this guide
+      to set up your project and app.
+      In that section, you'll also click a button for your chosen
+      Gemini API provider so that you see provider-specific content
+      on this page.
+import { initializeApp } from "firebase/app";
+import {
+  getAI,
+  getGenerativeModel,
+  GoogleAIBackend,
+  InferenceMode,
+  Schema
+} from "firebase/ai";
+// TODO(developer): Replace the following with your app's Firebase configuration.
+// See: https://firebase.google.com/docs/web/learn-more#config-object
+const firebaseConfig = {
+  // ...
+};
+// Initialize FirebaseApp.
+const firebaseApp = initializeApp(firebaseConfig);
+// Initialize the Gemini Developer API backend service.
+const ai = getAI(firebaseApp, { backend: new GoogleAIBackend() });
+// Define an enum schema using the `Schema` helper method with allowed string values.
+const enumSchema = Schema.enumString({
+  enum: ["drama", "comedy", "documentary"]
+});
+// Create a GenerativeModel instance configured to use a hybrid inference mode (like PREFER_ON_DEVICE).
+const model = getGenerativeModel(ai, {
+  mode: InferenceMode.INFERENCE_MODE,
+  // For cloud-hosted models, specify MIME type and response schema.
+  inCloudParams: {
+    model: "CLOUD_MODEL_NAME",
+    generationConfig: {
+      responseMimeType: "text/x.enum",
+      responseSchema: enumSchema
+    }
+  },
+  // For on-device models, pass the enum schema as the response constraint.
+  onDeviceParams: {
+    promptOptions: {
+      responseConstraint: enumSchema
+    }
+  }
+});
+const prompt = `The film aims to educate and inform viewers about real-life
+subjects, events, or people. It offers a factual record of a particular topic
+by combining interviews, historical footage, and narration. The primary purpose
+of a film is to present information and provide insights into various aspects
+of reality.`;
+// Generate the structured enum output.
+const result = await model.generateContent(prompt);
+// Access the selected enum value string from response.text().
+console.log(result.response.text());
+Example 2: Using a plain JSON schema
+This example defines the enum schema using JSON only.
+      Before trying this sample, complete the
+      Before you begin section of this guide
+      to set up your project and app.
+      In that section, you'll also click a button for your chosen
+      Gemini API provider so that you see provider-specific content
+      on this page.
+import { initializeApp } from "firebase/app";
+import {
+  getAI,
+  getGenerativeModel,
+  GoogleAIBackend,
+  InferenceMode
+} from "firebase/ai";
+// TODO(developer): Replace the following with your app's Firebase configuration.
+// See: https://firebase.google.com/docs/web/learn-more#config-object
+const firebaseConfig = {
+  // ...
+};
+// Initialize FirebaseApp.
+const firebaseApp = initializeApp(firebaseConfig);
+// Initialize the Gemini Developer API backend service.
+const ai = getAI(firebaseApp, { backend: new GoogleAIBackend() });
+// Define the enum schema as a plain JSON object.
+const enumSchema = {
+  type: "string",
+  enum: ["drama", "comedy", "documentary"]
+};
+// Create a GenerativeModel instance configured to use a hybrid inference mode (like PREFER_ON_DEVICE).
+const model = getGenerativeModel(ai, {
+  mode: InferenceMode.INFERENCE_MODE,
+  // For cloud-hosted models, specify MIME type and response schema.
+  inCloudParams: {
+    model: "CLOUD_MODEL_NAME",
+    generationConfig: {
+      responseMimeType: "text/x.enum",
+      responseSchema: enumSchema
+    }
+  },
+  // For on-device models, pass the enum schema as the response constraint.
+  onDeviceParams: {
+    promptOptions: {
+      responseConstraint: enumSchema
+    }
+  }
+});
+const prompt = `The film aims to educate and inform viewers about real-life
+subjects, events, or people. It offers a factual record of a particular topic
+by combining interviews, historical footage, and narration. The primary purpose
+of a film is to present information and provide insights into various aspects
+of reality.`;
+// Generate the structured enum output.
+const result = await model.generateContent(prompt);
+// Access the selected enum value string from response.text().
+console.log(result.response.text());
+Give feedback
+  about your experience with Firebase AI Logic
+         

@@ -1,0 +1,60 @@
+
+            Bradford Lee
+                  LinkedIn
+            François Beaufort
+                  GitHub
+            Alexandra Klepper
+                  GitHub
+                  Bluesky
+  Published: December 5, 2025
+When we launched the Google Chrome Built-in AI Challenge 2025,
+our second annual built-in AI challenge, we invited you to develop web
+applications and Chrome Extensions that used one or more built-in AI APIs.
+Developers were invited to build
+multimodal applications with the
+Prompt API and implement hybrid strategies so
+users everywhere could benefit from your applications.
+Thank you to everyone who signed up and entered: over 14,000 people registered,
+with more than 1,300 submissions!
+Our judges were so excited to look at the functionality, your videos, and
+code. We narrowed down our winners based on five criteria, including
+functionality, purpose, content, user experience, and technical execution.
+Congratulations to our winners.
+Most helpful application
+The most helpful winners effectively address a significant, real-world user need or problem. They combine practicality, user-friendliness, and technological excellence to deliver substantial and meaningful value to its users, making their daily browsing tasks easier, faster, or more accessible.
+Chrome Extension: Nutshell: Hands-Free Web Access for Everyone helps users with motor disabilities to browse the web hands-free.
+Web application: AAC Board AI helps people communicate, using Chrome's Built-in AI APIs to proofread, rephrase, and translate messages instantly, privately and offline.
+Best multimodal AI application
+The best multimodal AI winners use the Prompt API with multimodal capabilities, such as audio and image inputs. They effectively address a significant need or problem by combining practicality, usability, and technological excellence to deliver meaningful value to its users.
+Chrome Extension: Phonaify detects English pronunciation errors and provides real-time phonetic feedback as users read online.
+Web application: Pet Shelter App helps under-resourced shelters find forever homes for more pets.
+Best hybrid AI application
+The best hybrid AI winners seamlessly integrate client-side and server-side AI capabilities using the Firebase AI Logic or Gemini Developer API. There is a clear reason why the submission benefits from a hybrid AI approach, and they help address a significant need or problem.
+Chrome Extension: Mentelo-An Interactive Chrome Extension You Can Talk To
+offers instant on-page tech support to answer your questions, along with 10
+other essential everyday features.
+Web application: Trail
+acts as your offline trail companion. Plan, navigate, and explore with
+confidence, even without the internet.
+Honorable mentions
+These winners demonstrate significant merit and had noteworthy qualities
+worthy of distinction.
+BrowseBack gives your browser a photographic memory.
+EduAdapt turns any web page into a neurodivergent-friendly reading experience, tailored for ADHD and dyslexia students.
+Helix AI is a sidebar chatbot that lets you prompt, talk to your site, and attach images.
+Marionette - The On-Device Multimodal Al Agent automates browser interactions, using the Prompt API, Summarizer API, Rewriter API, and Writer API.
+The Turing Werewolf turns the classic social deduction game, Werewolf, into a solo experience using the Prompt API, where each player you meet debates and can deceive you.
+In addition, thank you to everyone who gave feedback on their experience using the built-in AI APIs. Special thanks to Jay P., Jackson K., Akinwumi M., Anushka R., and Kyu L. for their excellent and detailed feedback to help improve our implementation.
+Stay connected
+Stay connected and learn more about built-in AI.
+Join the early preview program for an early look at new
+APIs and access to our mailing list.
+We are still active on the
+Discord channel, so you can join us there at #chrome-built-in-ai.
+Engage with us on our Chrome for Developers social channels:
+X, LinkedIn,
+YouTube, and
+Bluesky.
+We look forward to seeing what you build, and your future entries to
+Chrome hackathons.
+    
