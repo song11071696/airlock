@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Airlock — understand official letters without giving away who you are</title>
+    <meta name="description" content="Airlock removes your personal details on your own device with Gemini Nano, then asks Gemini in the cloud to explain the letter. Built with Firebase AI Logic hybrid inference." />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">⟦⟧</span>
+        <div>
+          <h1>Airlock</h1>
+          <p class="tag">Understand an official letter without giving away who you are.</p>
+        </div>
+      </div>
+      <div class="status" role="status" aria-live="polite">
+        <span class="pill" id="pill-device" title="Gemini Nano in Chrome">On-device: checking…</span>
+        <button id="btn-device" class="small" hidden>Enable Gemini Nano</button>
+        <span class="pill" id="pill-net">Network: …</span>
+        <span class="pill" id="pill-cloud">Cloud: …</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="card" id="step-input">
+        <h2><span class="num">1</span> Your letter</h2>
+        <p class="hint">Paste the text, or add a photo (JPEG/PNG). Photos are read by Gemini Nano on this device and are never uploaded.</p>
+        <div class="row samples" id="samples"></div>
+        <textarea id="letter" rows="12" placeholder="Paste the letter here…" spellcheck="false"></textarea>
+        <div class="row">
+          <label class="file">
+            <input type="file" id="photo" accept="image/jpeg,image/png" />
+            <span>Add photo</span>
+          </label>
+          <span id="photo-status" class="muted"></span>
+          <span class="spacer"></span>
+          <button id="btn-airlock" class="primary">Run the airlock →</button>
+        </div>
+      </section>
+
+      <section class="card" id="step-review" hidden>
+        <h2><span class="num">2</span> Airlock review</h2>
+        <p class="hint">Left: what stays on this device. Right: the exact text that would leave it. Click a detail to release or withhold it. Select text on the right to withhold more.</p>
+        <div class="split">
+          <div>
+            <h3>Stays on this device <span class="count" id="kept-count"></span></h3>
+            <div id="entities" class="chips"></div>
+          </div>
+          <div>
+            <h3>Leaves this device <span class="count" id="bytes-count"></span></h3>
+            <pre id="outbound" class="outbound" tabindex="0"></pre>
+            <div class="row">
+              <button id="btn-withhold" class="small" disabled>Withhold selection</button>
+              <span id="leak" class="leak"></span>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <span id="route" class="muted"></span>
+          <span class="spacer"></span>
+          <button id="btn-analyse" class="primary">Explain this letter →</button>
+        </div>
+      </section>
+
+      <section class="card" id="step-result" hidden>
+        <h2><span class="num">3</span> What it means <span id="result-badge" class="badge"></span></h2>
+        <div id="result"></div>
+        <details class="raw">
+          <summary>Show what the model actually returned (tokens, before your details were put back)</summary>
+          <pre id="tokenised"></pre>
+        </details>
+      </section>
+
+      <section class="card" id="step-ask" hidden>
+        <h2><span class="num">4</span> Ask about it</h2>
+        <div class="row">
+          <input id="question" type="text" placeholder="e.g. Does the 3 days include the weekend?" />
+          <button id="btn-ask">Ask</button>
+        </div>
+        <div id="answers"></div>
+      </section>
+
+      <section class="card log">
+        <h2>Where each step ran</h2>
+        <ol id="log"></ol>
+        <p class="muted small">Badges come from Firebase AI Logic's <code>inferenceSource</code>. LOCAL RULES = plain code on this device, no AI.</p>
+      </section>
+    </main>
+
+    <footer>
+      Airlock is not legal advice. All sample letters are fictional. Built with Firebase AI Logic hybrid inference.
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
