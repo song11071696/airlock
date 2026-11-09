@@ -13,6 +13,7 @@
     "firebase": "^13.2.0"
   },
   "devDependencies": {
+    "jsdom": "^31.0.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
     "vitest": "^5.1.0"

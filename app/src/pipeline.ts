@@ -49,7 +49,8 @@ export async function discover(raw: string, useDevice: boolean, log: StepLog[]):
 }
 
 export function build(raw: string, entities: Entity[], released: Set<string>, log: StepLog[]): Prepared {
-  const active = entities.filter((e) => !released.has(e.text.toLowerCase()));
+  const isReleased = (e: Entity) => released.has(e.text.toLowerCase()) || (!!e.parent && released.has(e.parent.toLowerCase()));
+  const active = entities.filter((e) => !isReleased(e));
   const vault = newVault();
   const { redacted } = redact(raw, active, vault);
   const leaks = leakCheck(redacted, vault).filter((l) => !released.has(l.toLowerCase()));

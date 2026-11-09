@@ -156,13 +156,13 @@ function renderReview(): void {
   $("entities").innerHTML = p.entities.length
     ? p.entities
         .map((e) => {
-          const rel = p.released.has(e.text.toLowerCase());
+          const rel = p.released.has(e.text.toLowerCase()) || (!!e.parent && p.released.has(e.parent.toLowerCase()));
           return `<button class="chip ${rel ? "released" : ""}" data-text="${esc(e.text)}" title="${rel ? "Will be sent as-is. Click to withhold." : "Withheld as " + esc(tokenOf(e)) + ". Click to release."}">` +
             `<small>${e.type}</small>${esc(e.text)}<span class="by">${e.by === "on_device" ? "Nano" : e.by}</span></button>`;
         })
         .join("")
     : `<p class="muted">No personal details found. Select text on the right to withhold anything.</p>`;
-  const kept = p.entities.length - p.released.size;
+  const kept = p.vault.byToken.size;
   $("kept-count").textContent = `· ${kept} withheld`;
   $("outbound").innerHTML = esc(p.redacted).replace(TOKEN_RE, (t) => `<span class="tok">${t}</span>`);
   $("bytes-count").textContent = `· ${new TextEncoder().encode(p.redacted).length} bytes`;

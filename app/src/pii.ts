@@ -23,6 +23,8 @@ export interface Entity {
   text: string;
   type: EntityType;
   by: Finder;
+  /** set when this entity was derived from another one (e.g. a surname from a full name) */
+  parent?: string;
 }
 
 /** Text that has passed through the airlock. Only this type may be sent to a cloud-capable model. */
@@ -154,7 +156,7 @@ export function expandNames(entities: Entity[]): Entity[] {
     const last = parts[parts.length - 1];
     if (!have.has(last.toLowerCase())) {
       have.add(last.toLowerCase());
-      out.push({ text: last, type: "PERSON", by: e.by });
+      out.push({ text: last, type: "PERSON", by: e.by, parent: e.text });
     }
   }
   return out;

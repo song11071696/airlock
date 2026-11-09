@@ -203,6 +203,19 @@ export async function prepareDeviceModel(onProgress: (fraction: number) => void)
   await redactor.initializeDeviceModel(onProgress);
 }
 
+/**
+ * Guard for every ONLY_ON_DEVICE call.
+ * Found while testing firebase@13.2.0: when the browser has no `LanguageModel` global (Firefox, Safari,
+ * mobile, older Chrome) the SDK creates no Chrome adapter and `callCloudOrDevice()` sends even
+ * ONLY_ON_DEVICE requests to the cloud. For raw letters that would be a privacy leak, so we refuse locally.
+ */
+export async function assertOnDevice(): Promise<void> {
+  const state = await deviceState();
+  if (state !== "available") {
+    throw new Error(`On-device model not available (${state}); refusing to run this step anywhere else.`);
+  }
+}
+
 export function cloudReachable(): boolean {
   return cloudConfigured && navigator.onLine;
 }
@@ -230,6 +243,7 @@ async function timed<T>(fn: () => Promise<{ value: T; source: Source }>): Promis
 /** RAW image -> text. On device only. */
 export function transcribeImage(base64: string, mimeType: "image/jpeg" | "image/png"): Promise<Timed<string>> {
   return timed(async () => {
+    await assertOnDevice();
     const parts: Part[] = [
       { type: "text", text: "Transcribe all text in this letter exactly, preserving line breaks. Output only the text." },
       { type: "inlineData", inlineData: { data: base64, mimeType } },
@@ -242,24 +256,39 @@ export function transcribeImage(base64: string, mimeType: "image/jpeg" | "image/
 /** RAW text -> entity JSON. On device only. */
 export function findEntitiesOnDevice(rawChunk: string): Promise<Timed<unknown>> {
   return timed(async () => {
+    await assertOnDevice();
     const r = await redactor.generateContent(`Letter:\n"""\n${rawChunk}\n"""`);
     return { value: JSON.parse(r.response.text()), source: srcOf(r.response.inferenceSource) };
   });
 }
 
-/** REDACTED text -> structured analysis. Cloud preferred. */
+/** REDACTED text -> structured analysis. Cloud preferred; Nano if the cloud is unreachable or refuses. */
 export function analyse(letter: Redacted): Promise<Timed<Analysis>> {
-  const model = cloudReachable() ? analystCloud : analystLocal;
-  return timed(async () => {
-    const r = await model.generateContent(`Explain this letter and draft a short reply.\n\nLetter:\n"""\n${letter}\n"""`);
+  const prompt = `Explain this letter and draft a short reply.\n\nLetter:\n"""\n${letter}\n"""`;
+  const runLocal = async () => {
+    await assertOnDevice();
+    const r = await analystLocal.generateContent(prompt);
     return { value: JSON.parse(r.response.text()) as Analysis, source: srcOf(r.response.inferenceSource) };
+  };
+  return timed(async () => {
+    if (!cloudReachable()) return runLocal();
+    try {
+      // SDK falls back to Nano itself on network errors; other errors (quota, App Check) land in catch.
+      const r = await analystCloud.generateContent(prompt);
+      return { value: JSON.parse(r.response.text()) as Analysis, source: srcOf(r.response.inferenceSource) };
+    } catch (cloudErr) {
+      if ((await deviceState()) === "available") return runLocal();
+      throw cloudErr;
+    }
   });
 }
 
 /** REDACTED context + question -> answer. On device preferred. */
 export function ask(letter: Redacted, question: Redacted): Promise<Timed<string>> {
-  const model = cloudReachable() ? helperHybrid : helperLocal;
+  const local = !cloudReachable();
+  const model = local ? helperLocal : helperHybrid;
   return timed(async () => {
+    if (local) await assertOnDevice();
     const r = await model.generateContent(`Letter:\n"""\n${letter}\n"""\n\nQuestion: ${question}`);
     return { value: r.response.text(), source: srcOf(r.response.inferenceSource) };
   });
